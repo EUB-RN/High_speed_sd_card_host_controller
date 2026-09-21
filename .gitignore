@@ -1,0 +1,14 @@
+# Gowin EDA build output
+impl/
+*.fs
+*.bin
+*.rpt.html
+*.log.bak
+
+# simulation
+*.vcd
+*.fst
+obj_dir/
+sim_build/
+__pycache__/
+*.vvp
