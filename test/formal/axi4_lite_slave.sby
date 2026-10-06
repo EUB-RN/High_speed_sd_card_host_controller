@@ -1,0 +1,50 @@
+# SymbiYosys driver for the AXI4-Lite slave proof.
+#
+#   sby -f test/formal/axi4_lite_slave.sby
+#
+# `prove` runs induction as well as bounded model checking, so a pass is a
+# proof for all time rather than for the first N cycles. `bmc` is the quicker
+# answer while a property is being debugged.
+#
+# SymbiYosys is not part of the simulation flow and is not installed by
+# `make vip-venv`; see test/README.md for how to get it.
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc:   mode bmc
+bmc:   depth 24
+prove: mode prove
+prove: depth 24
+multiclock off
+
+[engines]
+# z3 rather than the default yices: yices-smt2 is not in this checkout's path,
+# and z3 comes from pip, which the verification venv already is.
+smtbmc z3
+
+[script]
+read -formal -D FORMAL faxil_slave.v
+read -formal -D FORMAL axi4_lite_slave.sv
+read -formal -D FORMAL faxil_axi4_lite_slave.sv
+# The induction task drops the liveness bound (F_MAXDELAY 0). The property set
+# counts the cycles between a request and its response and asserts the count
+# stays under the bound; induction starts from an arbitrary state, so it is
+# free to start that counter near the limit with no response in flight -- a
+# state the slave cannot actually reach, but not one induction can rule out
+# without an invariant on the property set's own counters.
+#
+# So the two tasks divide the work, and both are needed:
+#   bmc    every property, liveness included, exhaustively to depth 24
+#   prove  the safety properties, for all time
+# Closing liveness under induction means supplying that invariant, which is
+# listed as still-to-do in README.md.
+prove: chparam -set F_MAXDELAY 0 faxil_axi4_lite_slave
+prep -top faxil_axi4_lite_slave
+
+[files]
+third_party/faxil_slave.v
+faxil_axi4_lite_slave.sv
+../../rtl/axi4/axi4_lite_slave.sv
