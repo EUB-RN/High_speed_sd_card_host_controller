@@ -23,8 +23,8 @@
 //   Implements   : R-IF-5, R-IF-6, R-IF-7, R-CLK-3
 // -----------------------------------------------------------------------------
 module axis_rd_master #(
-  parameter int unsigned DATA_W     = 32,
-  parameter int unsigned FIFO_DEPTH = 1024
+  parameter int DATA_W     = 32,
+  parameter int FIFO_DEPTH = 1024
 ) (
   // ---- AXI / system domain -------------------------------------------------
   input  logic                         axi_clk,

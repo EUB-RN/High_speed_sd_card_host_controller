@@ -23,10 +23,10 @@
 module ultra_sd_axi_top
   import ultra_sd_pkg::*;
 #(
-  parameter int unsigned DATA_W             = 32,
-  parameter int unsigned ADDR_W             = 8,
-  parameter int unsigned RD_FIFO_BLOCKS     = 2,
-  parameter int unsigned WR_FIFO_BLOCKS     = 2,
+  parameter int DATA_W             = 32,
+  parameter int ADDR_W             = 8,
+  parameter int RD_FIFO_BLOCKS     = 2,
+  parameter int WR_FIFO_BLOCKS     = 2,
   // Byte address of VERSION. Stays 0 while the AXI address port is the 8 bits
   // of Figure 5-1; it exists for instantiations behind a wider host bus.
   parameter logic [31:0] SD_ULTRA_BASE_ADDR = 32'h0000_0000
@@ -111,9 +111,9 @@ module ultra_sd_axi_top
 );
 
   // 512-byte blocks, Table 5-1. Both FIFO depths must come out a power of two.
-  localparam int unsigned BEATS_PER_BLOCK = (512 * 8) / DATA_W;
-  localparam int unsigned RD_FIFO_WORDS   = RD_FIFO_BLOCKS * BEATS_PER_BLOCK;
-  localparam int unsigned WR_FIFO_WORDS   = WR_FIFO_BLOCKS * BEATS_PER_BLOCK;
+  localparam int BEATS_PER_BLOCK = (512 * 8) / DATA_W;
+  localparam int RD_FIFO_WORDS   = RD_FIFO_BLOCKS * BEATS_PER_BLOCK;
+  localparam int WR_FIFO_WORDS   = WR_FIFO_BLOCKS * BEATS_PER_BLOCK;
 
   // ---------------------------------------------------------------------------
   // AXI4-Lite slave -> register file

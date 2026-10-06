@@ -29,8 +29,8 @@
 //   Implements   : R-CLK-3 (documented CDC structure), R-IF-7, R-IF-8
 // -----------------------------------------------------------------------------
 module async_fifo #(
-  parameter int unsigned DATA_W = 32,
-  parameter int unsigned DEPTH  = 1024 // must be a power of two
+  parameter int DATA_W = 32,
+  parameter int DEPTH  = 1024 // must be a power of two
 ) (
   // ---- write side ----------------------------------------------------------
   input  logic                     wr_clk,
@@ -49,7 +49,7 @@ module async_fifo #(
   output logic [$clog2(DEPTH):0]   rd_level  // words available, read view
 );
 
-  localparam int unsigned AW = $clog2(DEPTH);
+  localparam int AW = $clog2(DEPTH);
 
   // Storage. One write port, one read port, two clocks -> BSRAM.
   logic [DATA_W-1:0] mem [DEPTH];
@@ -69,7 +69,7 @@ module async_fifo #(
   function automatic logic [AW:0] gray2bin(input logic [AW:0] g);
     logic [AW:0] b;
     b = g;
-    for (int unsigned i = 1; i <= AW; i++) begin
+    for (int i = 1; i <= AW; i++) begin
       b = b ^ (g >> i);
     end
     return b;

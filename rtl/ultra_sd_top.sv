@@ -10,11 +10,11 @@
 //                  instantiates this module and nothing else (Figure 4-1).
 // -----------------------------------------------------------------------------
 module ultra_sd_top #(
-  parameter int unsigned SYS_CLK_HZ     = 100_000_000, // supplied by harness
-  parameter int unsigned DATA_W         = 32,          // AXIS payload width
-  parameter int unsigned RD_FIFO_BLOCKS = 2,
-  parameter int unsigned WR_FIFO_BLOCKS = 2,
-  parameter int unsigned CRC_RETRIES    = 3
+  parameter int SYS_CLK_HZ     = 100_000_000, // supplied by harness
+  parameter int DATA_W         = 32,          // AXIS payload width
+  parameter int RD_FIFO_BLOCKS = 2,
+  parameter int WR_FIFO_BLOCKS = 2,
+  parameter int CRC_RETRIES    = 3
 ) (
   input  logic              clk,            // system clock, SYS_CLK_HZ
   input  logic              rst_n,          // async assert, sync deassert

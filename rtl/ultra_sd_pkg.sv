@@ -77,20 +77,81 @@ package ultra_sd_pkg;
     RESP_NONE, RESP_R1, RESP_R1B, RESP_R2, RESP_R3, RESP_R6, RESP_R7
   } resp_e;
 
-  localparam int unsigned RESP_SHORT_BITS = 48;
-  localparam int unsigned RESP_LONG_BITS  = 136; // R2 only, hazard D-4
+  localparam int RESP_SHORT_BITS = 48;
+  localparam int RESP_LONG_BITS  = 136; // R2 only, hazard D-4
 
-  // ---- CRC polynomials, Table A-3 -----------------------------------------
-  localparam logic [6:0]  CRC7_POLY  = 7'h09;   // x^7 + x^3 + 1
-  localparam logic [15:0] CRC16_POLY = 16'h1021; // x^16 + x^12 + x^5 + 1
+  // ---- CRC polynomials and geometry, Table A-3 -----------------------------
+  localparam int CRC7_W  = 7;
+  localparam int CRC16_W = 16;
+
+  localparam logic [CRC7_W-1:0]  CRC7_POLY  = 7'h09;    // x^7 + x^3 + 1
+  localparam logic [CRC16_W-1:0] CRC16_POLY = 16'h1021; // x^16 + x^12 + x^5 + 1
+
+  localparam logic [CRC7_W-1:0]  CRC7_INIT  = {CRC7_W{1'b0}};
+  localparam logic [CRC16_W-1:0] CRC16_INIT = {CRC16_W{1'b0}};
+
+  // CRC7 covers the 40 bits from the start bit to the end of the argument.
+  localparam int CMD_CRC7_BITS = 40;
+
+  // ---- Register field positions, Table 5-1 ---------------------------------
+  // These exist so that a producer packing STATUS, or a consumer unpacking
+  // CTRL, never writes a bare bit number (Section 4.4 forbids magic numbers).
+
+  localparam int CTRL_W               = 4;
+  localparam int CTRL_START_BIT       = 0;
+  localparam int CTRL_ABORT_BIT       = 1;
+  localparam int CTRL_STAT_CLEAR_BIT  = 2;
+  localparam int CTRL_SOFT_RESET_BIT  = 3;
+
+  localparam int STATUS_W             = 8;
+  localparam int STATUS_BUSY_BIT      = 0;
+  localparam int STATUS_DONE_BIT      = 1;
+  localparam int STATUS_CARD_PRES_BIT = 2;
+  localparam int STATUS_CARD_RDY_BIT  = 3;
+  localparam int STATUS_SPEED_LSB     = 4; // 2 bits, speed_e
+  localparam int STATUS_BUS_WIDTH_LSB = 6; // 2 bits, 0 = 1-bit
+
+  localparam int CFG_CLK_W            = 8;
+
+  localparam int CFG_PHY_W            = 6;
+  localparam int CFG_PHY_PHASE_LSB    = 0; // 4 bits
+  localparam int CFG_PHY_PHASE_W      = 4;
+  localparam int CFG_PHY_FORCE_1BIT   = 4;
+  localparam int CFG_PHY_FORCE_DS     = 5;
+
+  localparam int IRQ_W                = 3;
+  localparam int IRQ_DONE_BIT         = 0;
+  localparam int IRQ_ERR_BIT          = 1;
+  localparam int IRQ_CARD_CHANGE_BIT  = 2;
+
+  localparam int RETRY_CRC_LSB        = 0;  // STAT_RETRY[15:0]
+  localparam int RETRY_CMD_LSB        = 16; // STAT_RETRY[31:16]
+
+  localparam int LBA_W                = 32;
+  localparam int BLOCKS_W             = 24;
 
   // ---- Bus / block geometry ------------------------------------------------
-  localparam int unsigned BLOCK_BYTES = 512;
+  localparam int BLOCK_BYTES    = 512;
+  localparam int SD_DATA_LANES  = 4;   // DAT0..DAT3, one CRC16 each
 
   typedef enum logic [1:0] {
     SPEED_INIT = 2'd0, // <= 400 kHz
     SPEED_DS   = 2'd1, // 25 MHz Default Speed
     SPEED_HS   = 2'd2  // 50 MHz High Speed
   } speed_e;
+
+  // ---- Sistem fazlari, system_controller FSM'i -----------------------------
+  // Cekirdegin kabaca hangi asamada oldugunu tek yerde adlandirir. Baslatma
+  // sirasi sabittir: reset -> kart algilama -> 74-clock rampa -> konfigurasyon.
+  // SYS_CONFIG ayni zamanda transferler arasindaki "ev" fazidir: veri fazlari
+  // oraya gider ve oraya doner.
+  typedef enum logic [2:0] {
+    SYS_RESET       = 3'd0, // reset (dis ya da soft) etkin / yeni birakildi
+    SYS_CARD_DETECT = 3'd1, // debounce edilmis kart varligini bekle
+    SYS_RAMP        = 3'd2, // ilk komuttan once >=74 SD saat kenari
+    SYS_CONFIG      = 3'd3, // init merdiveni; bittikten sonra bosta bekleme
+    SYS_READ        = 3'd4, // veri okuma transferi surmekte (XFER.DIR = 0)
+    SYS_WRITE       = 3'd5  // veri yazma transferi surmekte (XFER.DIR = 1)
+  } sys_phase_e;
 
 endpackage

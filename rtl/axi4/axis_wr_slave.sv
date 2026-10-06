@@ -22,8 +22,8 @@
 //   Implements   : R-IF-5, R-IF-8, R-CLK-3
 // -----------------------------------------------------------------------------
 module axis_wr_slave #(
-  parameter int unsigned DATA_W     = 32,
-  parameter int unsigned FIFO_DEPTH = 1024
+  parameter int DATA_W     = 32,
+  parameter int FIFO_DEPTH = 1024
 ) (
   // ---- AXI / system domain -------------------------------------------------
   input  logic                         axi_clk,
@@ -46,7 +46,7 @@ module axis_wr_slave #(
 );
 
   // 512 bytes per block, Table 5-1.
-  localparam int unsigned BLOCK_WORDS = (512 * 8) / DATA_W;
+  localparam int BLOCK_WORDS = (512 * 8) / DATA_W;
 
   logic              fifo_full;
   logic [DATA_W:0]   fifo_wr_data;

@@ -28,7 +28,7 @@ module ultra_sd_crc16
 #(
   // Bits of THIS LANE's stream folded per evaluation. 1 = one bit per SD clock,
   // which is the 4-bit-mode data rate for a single lane.
-  parameter int unsigned IN_WIDTH = 1,
+  parameter int IN_WIDTH = 1,
   parameter logic [CRC16_W-1:0] POLY = CRC16_POLY
 ) (
   // Running remainder in. Drive CRC16_INIT at the start of a block.
@@ -38,8 +38,8 @@ module ultra_sd_crc16
   // Remainder after all IN_WIDTH bits have been folded in.
   output logic [CRC16_W-1:0]  crc_o
 );
-  localparam int unsigned W     = CRC16_W;
-  localparam int unsigned TERMS = W + IN_WIDTH; // the {crc_i, data_i} term vector
+  localparam int W     = CRC16_W;
+  localparam int TERMS = W + IN_WIDTH; // the {crc_i, data_i} term vector
 
   // ---------------------------------------------------------------------------
   // MASK, flattened as W rows of TERMS bits: row j selects which of the TERMS
@@ -58,7 +58,7 @@ module ultra_sd_crc16
     logic [IN_WIDTH-1:0] d;
     logic               feedback;
     m = {(W*TERMS){1'b0}};
-    for (int unsigned k = 0; k < TERMS; k++) begin
+    for (int k = 0; k < TERMS; k++) begin
       if (k < IN_WIDTH) begin
         acc = {W{1'b0}};              // basis vector on data_i[k]
         d   = {{IN_WIDTH-1{1'b0}}, 1'b1} << k;
@@ -66,11 +66,11 @@ module ultra_sd_crc16
         acc = {{W-1{1'b0}}, 1'b1} << (k - IN_WIDTH); // basis on crc_i[k-IN_WIDTH]
         d   = {IN_WIDTH{1'b0}};
       end
-      for (int unsigned i = IN_WIDTH; i > 0; i--) begin
+      for (int i = IN_WIDTH; i > 0; i--) begin
         feedback = acc[W-1] ^ d[i-1];
         acc      = {acc[W-2:0], 1'b0} ^ (feedback ? POLY : {W{1'b0}});
       end
-      for (int unsigned j = 0; j < W; j++) begin
+      for (int j = 0; j < W; j++) begin
         m[j*TERMS + k] = acc[j];
       end
     end
