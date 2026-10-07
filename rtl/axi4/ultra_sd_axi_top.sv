@@ -1,25 +1,5 @@
-// -----------------------------------------------------------------------------
-// ultra_sd_axi_top
-//   Purpose      : L4. The complete host-facing layer: the AXI4-Lite slave and
-//                  the Table 5-1 register file, the AXI4-Stream transmitter
-//                  (read payload, card -> host) and receiver (write payload,
-//                  host -> card), and the two dual-clock FIFOs that carry
-//                  payload between the AXI and SD clock domains. Wiring and
-//                  request bookkeeping only -- no SD protocol knowledge and no
-//                  command opcodes (Table 4-1).
-//
-//                  Layer boundary: everything above this module runs on clk,
-//                  everything the block layer sees runs on sd_clk, and the only
-//                  paths between them are the two async FIFOs instantiated here
-//                  plus the status/counter inputs, which their producers
-//                  synchronise (doc/cdc.md).
-//
-//   Clock domain : two. clk is the system clock; sd_clk is the divided SD clock
-//                  from the PHY. The ratio changes at runtime with CFG_CLK, so
-//                  nothing here may assume one (R-DEG-1).
-//   Reset scheme : rst_n / sd_rst_n, async assert / sync deassert (R-CLK-1)
-//   Implements   : Spec Section 5.3, 5.4, R-IF-1 .. R-IF-12
-// -----------------------------------------------------------------------------
+
+
 module ultra_sd_axi_top
   import ultra_sd_pkg::*;
 #(
@@ -27,19 +7,16 @@ module ultra_sd_axi_top
   parameter int ADDR_W             = 8,
   parameter int RD_FIFO_BLOCKS     = 2,
   parameter int WR_FIFO_BLOCKS     = 2,
-  // Byte address of VERSION. Stays 0 while the AXI address port is the 8 bits
-  // of Figure 5-1; it exists for instantiations behind a wider host bus.
+
   parameter logic [31:0] SD_ULTRA_BASE_ADDR = 32'h0000_0000
 ) (
-  // ---- system / AXI domain -------------------------------------------------
+
   input  logic              clk,
   input  logic              rst_n,
 
-  // ---- SD domain, from the PHY divider -------------------------------------
   input  logic              sd_clk,
   input  logic              sd_rst_n,
 
-  // ---- AXI4-Lite slave: control and status (Figure 5-1) --------------------
   input  logic [ADDR_W-1:0] s_axil_awaddr,
   input  logic              s_axil_awvalid,
   output logic              s_axil_awready,
@@ -58,13 +35,11 @@ module ultra_sd_axi_top
   output logic              s_axil_rvalid,
   input  logic              s_axil_rready,
 
-  // ---- AXI4-Stream master: read payload, card -> host ----------------------
   output logic [DATA_W-1:0] m_axis_rd_tdata,
   output logic              m_axis_rd_tvalid,
   input  logic              m_axis_rd_tready,
   output logic              m_axis_rd_tlast,
 
-  // ---- AXI4-Stream slave: write payload, host -> card ----------------------
   input  logic [DATA_W-1:0] s_axis_wr_tdata,
   input  logic              s_axis_wr_tvalid,
   output logic              s_axis_wr_tready,
@@ -72,20 +47,15 @@ module ultra_sd_axi_top
 
   output logic              irq,
 
-  // ---- to the block layer: request and configuration (clk domain) ----------
-  // UPPER_CASE = one CPU-visible register of Table 5-1, packed exactly as the
-  // table specifies; field positions are named in ultra_sd_pkg. The convention
-  // is explained in the header of ultra_sd_reg.sv.
-  output logic [CTRL_W-1:0]    CTRL,     // [0] START [1] ABORT [2] STAT_CLEAR
-                                         // [3] SOFT_RESET -- one-cycle pulses
-  output logic [LBA_W-1:0]     LBA,      // latched at CTRL.START (R-IF-3)
+  output logic [CTRL_W-1:0]    CTRL,
+
+  output logic [LBA_W-1:0]     LBA,
   output logic [BLOCKS_W-1:0]  BLOCKS,
-  output logic                 XFER,     // [0] DIR: 0 = read, 1 = write
+  output logic                 XFER,
   output logic [CFG_CLK_W-1:0] CFG_CLK,
   output logic [CFG_PHY_W-1:0] CFG_PHY,
-  output logic                 rd_xfer_busy, // stream still owes beats
+  output logic                 rd_xfer_busy,
 
-  // ---- from the block layer: status and counters (clk domain) --------------
   input  logic [STATUS_W-1:0]  STATUS,
   input  err_e                 ERR,
   input  logic [31:0]          CARD_BLK,
@@ -95,14 +65,17 @@ module ultra_sd_axi_top
   input  logic [31:0]          STAT_RETRY,
   input  logic [IRQ_W-1:0]     IRQ_SET,
 
-  // ---- read payload in from the block layer (sd_clk domain) ----------------
   input  logic              sd_rd_pl_en,
   input  logic [DATA_W-1:0] sd_rd_pl_data,
+  input  logic              sd_rd_pl_commit,
+  input  logic              sd_rd_pl_rewind,
   output logic              sd_rd_pl_full,
+  output logic              sd_rd_pl_block_room,
   output logic [$clog2(RD_FIFO_BLOCKS*((512*8)/DATA_W)):0] sd_rd_pl_level,
 
-  // ---- write payload out to the block layer (sd_clk domain) ----------------
   input  logic              sd_wr_pl_en,
+  input  logic              sd_wr_pl_commit,
+  input  logic              sd_wr_pl_rewind,
   output logic [DATA_W-1:0] sd_wr_pl_data,
   output logic              sd_wr_pl_last,
   output logic              sd_wr_pl_valid,
@@ -110,14 +83,10 @@ module ultra_sd_axi_top
   output logic              sd_wr_pl_block_ready
 );
 
-  // 512-byte blocks, Table 5-1. Both FIFO depths must come out a power of two.
   localparam int BEATS_PER_BLOCK = (512 * 8) / DATA_W;
   localparam int RD_FIFO_WORDS   = RD_FIFO_BLOCKS * BEATS_PER_BLOCK;
   localparam int WR_FIFO_WORDS   = WR_FIFO_BLOCKS * BEATS_PER_BLOCK;
 
-  // ---------------------------------------------------------------------------
-  // AXI4-Lite slave -> register file
-  // ---------------------------------------------------------------------------
   logic              bus_wr_en;
   logic [ADDR_W-1:0] bus_wr_addr;
   logic [31:0]       bus_wr_data;
@@ -196,13 +165,6 @@ module ultra_sd_axi_top
     .irq                 (irq)
   );
 
-  // ---------------------------------------------------------------------------
-  // AXI4-Stream transmitter: read payload, card -> host
-  //
-  // The beat count for the whole request is derived from the BLOCKS value the
-  // register file latched at CTRL.START (R-IF-3), so tlast belongs to the
-  // request and not to whatever the card happens to deliver (R-IF-6).
-  // ---------------------------------------------------------------------------
   logic        rd_start;
   logic [31:0] rd_beats;
 
@@ -227,13 +189,13 @@ module ultra_sd_axi_top
     .sd_rst_n         (sd_rst_n),
     .sd_wr_en         (sd_rd_pl_en),
     .sd_wr_data       (sd_rd_pl_data),
+    .sd_wr_commit     (sd_rd_pl_commit),
+    .sd_wr_rewind     (sd_rd_pl_rewind),
     .sd_wr_full       (sd_rd_pl_full),
+    .sd_wr_block_room (sd_rd_pl_block_room),
     .sd_wr_level      (sd_rd_pl_level)
   );
 
-  // ---------------------------------------------------------------------------
-  // AXI4-Stream receiver: write payload, host -> card
-  // ---------------------------------------------------------------------------
   axis_wr_slave #(
     .DATA_W     (DATA_W),
     .FIFO_DEPTH (WR_FIFO_WORDS)
@@ -247,6 +209,8 @@ module ultra_sd_axi_top
     .sd_clk           (sd_clk),
     .sd_rst_n         (sd_rst_n),
     .sd_rd_en         (sd_wr_pl_en),
+    .sd_rd_commit     (sd_wr_pl_commit),
+    .sd_rd_rewind     (sd_wr_pl_rewind),
     .sd_rd_data       (sd_wr_pl_data),
     .sd_rd_last       (sd_wr_pl_last),
     .sd_rd_valid      (sd_wr_pl_valid),
