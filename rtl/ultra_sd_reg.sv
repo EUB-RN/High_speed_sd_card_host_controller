@@ -40,6 +40,12 @@ module ultra_sd_reg
   input  logic [31:0]          STAT_RETRY,
 
   input  logic [IRQ_W-1:0]     IRQ_SET,
+
+  // The init ladder's own choice of divisor. CFG_CLK is the single source of
+  // truth for the SD clock, so the ladder seeds it here rather than driving the
+  // PHY behind the register's back -- that way a read of CFG_CLK always says
+  // what the clock is actually doing, and a software write still wins.
+  input  logic [CFG_CLK_W-1:0] CFG_CLK_HW,
   output logic                 irq
 );
 
@@ -67,6 +73,10 @@ module ultra_sd_reg
   logic [CFG_CLK_W-1:0] cfg_clk_q;
   logic [CFG_PHY_W-1:0] cfg_phy_q;
   logic [IRQ_W-1:0]     irq_en_q, irq_stat_q;
+
+  // Quasi-static: the ladder moves it twice during init and never again, so a
+  // change detector is enough and no handshake is needed.
+  logic [CFG_CLK_W-1:0] cfg_clk_hw_q;
 
   assign CFG_CLK = cfg_clk_q;
   assign CFG_PHY = cfg_phy_q;
@@ -116,13 +126,19 @@ module ultra_sd_reg
       lba_q      <= '0;
       blocks_q   <= BLOCKS_W'(1);
       xfer_q     <= 1'b0;
-      cfg_clk_q  <= '1;
-      cfg_phy_q  <= '0;
+      cfg_clk_q    <= '1;
+      cfg_clk_hw_q <= '1;
+      cfg_phy_q    <= '0;
       irq_en_q   <= '0;
       irq_stat_q <= '0;
     end else begin
 
       CTRL <= '0;
+
+      // Before the write case, so that a software write in the same cycle is
+      // the later assignment and therefore the one that sticks.
+      cfg_clk_hw_q <= CFG_CLK_HW;
+      if (cfg_clk_hw_q != CFG_CLK_HW) cfg_clk_q <= CFG_CLK_HW;
 
       if (wr_en) begin
         bresp_r <= wr_in_window ? RESP_OKAY : RESP_SLVERR;

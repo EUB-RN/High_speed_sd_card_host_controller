@@ -69,6 +69,17 @@ module ultra_sd_cmd
   output logic                      init_err_o,
   output err_e                      init_err_code_o,
 
+`ifdef ULTRA_SD_DEBUG_PORT
+  // ---- gozlem portu: YALNIZCA ULTRA_SD_DEBUG_PORT tanimliyken var ---------
+  // Makro tanimli degilken bu port yoktur ve Section 5.2'nin port listesi
+  // oldugu gibi kalir. Kart ERR_INIT ile duruyorsa merdivenin NEREDE durdugu
+  // disaridan gorulemez: init_err_code tek bir kod, ve ACMD41 adiminda
+  // "kart hala mesgul" ile "CMD55 hic cevap vermedi" ayni kodu uretir.
+  // Alanlar yavas degisir ve yalnizca gozlem icindir; hicbir kontrol yolu
+  // buna bagli degil.
+  output logic [63:0]               dbg_o,
+`endif
+
   // Merdivenin DAT okumalari (ACMD51 SCR, CMD6 switch status)
   output logic                      dat_rd_start_o,
   output logic [10:0]               dat_rd_bytes_o,
@@ -623,6 +634,13 @@ module ultra_sd_cmd
                 if (!rsp_err_q && rsp_data[39]) begin
                   block_addr_q <= rsp_data[38];
                 end else if (wait_cnt_q == '0) begin
+                  // step_cnt stays put: the default above already advanced it,
+                  // and without this the ladder records a rung it never ran.
+                  // Nothing downstream reads step_cnt after INIT_ERR, so this
+                  // cost nothing until the step number became observable -- at
+                  // which point it said the ladder died at CMD2 when it had in
+                  // fact never got past ACMD41.
+                  step_cnt        <= 4'd2;
                   init_err_code_q <= ERR_INIT;
                   init_mode_q     <= INIT_ERR;
                 end else begin
@@ -773,21 +791,40 @@ module ultra_sd_cmd
   localparam int DTO_W  = $clog2(DAT_TIMEOUT_CLK + 1);
   localparam int WAIT_W = (TO_W > DTO_W) ? TO_W : DTO_W;
 
-  logic [5:0]  rom_cmd  [0:9];
-  resp_e       rom_resp [0:9];
-  logic        rom_acmd [0:9];
+  // THE LADDER TABLE. Combinational decode of step_cnt, NOT an unpacked array
+  // filled from an `initial` block.
+  //
+  // It was an array, and on this FPGA toolchain the one-bit column of it --
+  // rom_acmd, the bit that says "this rung is an ACMD and needs a CMD55 in
+  // front of it" -- synthesised to a constant zero while the wider columns kept
+  // their contents. The design then sent a bare ACMD41 at the third rung, the
+  // card correctly ignored an application command that was never qualified by
+  // CMD55, and initialisation stopped there with a command timeout. Simulation
+  // honours `initial` and passed the whole way through, so nothing caught it
+  // until a capture of the CMD line on real hardware showed index 41 going out
+  // where index 55 should have been.
+  //
+  // A case statement is what both tools agree on. Enum LITERALS are assigned
+  // here, never a cast -- Icarus rejects enum casts inside always_comb, which
+  // is what the array was working around in the first place.
+  logic [5:0]  rom_cmd;
+  resp_e       rom_resp;
+  logic        rom_acmd;
 
-  initial begin
-    rom_cmd[0] = CMD0_GO_IDLE_STATE;     rom_resp[0] = RESP_NONE; rom_acmd[0] = 1'b0;
-    rom_cmd[1] = CMD8_SEND_IF_COND;      rom_resp[1] = RESP_R7;   rom_acmd[1] = 1'b0;
-    rom_cmd[2] = ACMD41_SD_SEND_OP_COND; rom_resp[2] = RESP_R3;   rom_acmd[2] = 1'b1;
-    rom_cmd[3] = CMD2_ALL_SEND_CID;      rom_resp[3] = RESP_R2;   rom_acmd[3] = 1'b0;
-    rom_cmd[4] = CMD3_SEND_RELATIVE_ADDR;rom_resp[4] = RESP_R6;   rom_acmd[4] = 1'b0;
-    rom_cmd[5] = CMD9_SEND_CSD;          rom_resp[5] = RESP_R2;   rom_acmd[5] = 1'b0;
-    rom_cmd[6] = CMD7_SELECT_CARD;       rom_resp[6] = RESP_R1B;  rom_acmd[6] = 1'b0;
-    rom_cmd[7] = ACMD51_SEND_SCR;        rom_resp[7] = RESP_R1;   rom_acmd[7] = 1'b1;
-    rom_cmd[8] = ACMD6_SET_BUS_WIDTH;    rom_resp[8] = RESP_R1;   rom_acmd[8] = 1'b1;
-    rom_cmd[9] = CMD6_SWITCH_FUNC;       rom_resp[9] = RESP_R1;   rom_acmd[9] = 1'b0;
+  always_comb begin
+    case (step_cnt)
+      4'd0:    begin rom_cmd = CMD0_GO_IDLE_STATE;      rom_resp = RESP_NONE; rom_acmd = 1'b0; end
+      4'd1:    begin rom_cmd = CMD8_SEND_IF_COND;       rom_resp = RESP_R7;   rom_acmd = 1'b0; end
+      4'd2:    begin rom_cmd = ACMD41_SD_SEND_OP_COND;  rom_resp = RESP_R3;   rom_acmd = 1'b1; end
+      4'd3:    begin rom_cmd = CMD2_ALL_SEND_CID;       rom_resp = RESP_R2;   rom_acmd = 1'b0; end
+      4'd4:    begin rom_cmd = CMD3_SEND_RELATIVE_ADDR; rom_resp = RESP_R6;   rom_acmd = 1'b0; end
+      4'd5:    begin rom_cmd = CMD9_SEND_CSD;           rom_resp = RESP_R2;   rom_acmd = 1'b0; end
+      4'd6:    begin rom_cmd = CMD7_SELECT_CARD;        rom_resp = RESP_R1B;  rom_acmd = 1'b0; end
+      4'd7:    begin rom_cmd = ACMD51_SEND_SCR;         rom_resp = RESP_R1;   rom_acmd = 1'b1; end
+      4'd8:    begin rom_cmd = ACMD6_SET_BUS_WIDTH;     rom_resp = RESP_R1;   rom_acmd = 1'b1; end
+      4'd9:    begin rom_cmd = CMD6_SWITCH_FUNC;        rom_resp = RESP_R1;   rom_acmd = 1'b0; end
+      default: begin rom_cmd = CMD0_GO_IDLE_STATE;      rom_resp = RESP_NONE; rom_acmd = 1'b0; end
+    endcase
   end
 
   // Merdivenin TEK sayaci: ROM'daki adim. Eskiden bunun yaninda 3 bitlik bir
@@ -797,6 +834,26 @@ module ultra_sd_cmd
   /* verilator lint_off UNUSED */
   logic [2:0]         init_phase_probe;   // dalga formu / tb gozlemi icin
   assign init_phase_probe = {1'b0, init_mode_q};
+
+`ifdef ULTRA_SD_DEBUG_PORT
+  // 11 + 8 + 1 + 1 + 1 + 2 + 4 + 4 = 32. retry_q is cast rather than pasted in:
+  // its width follows CMD_RETRIES, and a parameter change must not silently
+  // reshape this word.
+  // [63:32] is the last SHORT response's 32-bit payload -- resp_sh_q is
+  // {argument, CRC7, end bit}, so the argument is [39:8]. Sampled next to the
+  // step number it belongs to, this is what turns "the card went silent at
+  // CMD2" into an answer: CMD2 is ignored by a card still in idle, and the only
+  // thing that moves a card out of idle is ACMD41 answering with OCR bit 31
+  // set. R3 carries no CRC and the frame check for it is therefore just the end
+  // bit, so a misaligned R3 can pass with a busy bit that was never sent.
+  // Bit 23 is the CMD line as this module sees it. A top-level inout pad in a
+  // Gowin design may drive its IOBUF and nothing else -- tapping sd_cmd in the
+  // board top is an EX0339 placement error -- so the observer gets the line
+  // from here, where it is already in the cmd_clk domain.
+  assign dbg_o = {resp_sh_q[39:8],
+                  8'h0, cmd_in_i, init_mode_q, err_q, rsp_err_q, send55_q,
+                  init_owns_q, 2'(retry_q), state_q, step_cnt};
+`endif
   /* verilator lint_on UNUSED */
 
   logic [15:0]        rca_q;
@@ -837,9 +894,9 @@ module ultra_sd_cmd
   // Gonderici CEKIYOR: merdiven kostugu surece siradaki adim her zaman hazir,
   // ayri bir valid/ready el sikismasina gerek yok.
   assign ld_valid = init_owns ? 1'b1 : req_valid_i;
-  assign ld_index = sel_init    ? rom_cmd [step_cnt] : req_index_i;
-  assign ld_resp  = sel_init    ? rom_resp[step_cnt] : req_resp_i;
-  assign ld_acmd  = sel_init    ? rom_acmd[step_cnt] : req_is_acmd_i;
+  assign ld_index = sel_init    ? rom_cmd : req_index_i;
+  assign ld_resp  = sel_init    ? rom_resp : req_resp_i;
+  assign ld_acmd  = sel_init    ? rom_acmd : req_is_acmd_i;
 
   always_comb begin
     if (!sel_init) begin

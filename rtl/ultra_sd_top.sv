@@ -58,7 +58,14 @@ module ultra_sd_top #(
   parameter int DATA_W         = 32,          // AXIS payload width
   parameter int RD_FIFO_BLOCKS = 2,
   parameter int WR_FIFO_BLOCKS = 2,
-  parameter int CRC_RETRIES    = 3
+  parameter int CRC_RETRIES    = 3,
+  // SD clocks between the end of one command frame (or its response) and the
+  // start of the next. The spec's NCC/NRC minimum is 8 and that is the default,
+  // but it is a MINIMUM: a card that is slow to release CMD after a response
+  // misses a command sent exactly on it, and the symptom is the next command
+  // going unanswered with no error anywhere -- the card simply never saw it.
+  // Exposed so a board can be given more margin without editing this file.
+  parameter int NCC_GAP_CLK    = 8
 ) (
   input  logic              clk,            // system clock, SYS_CLK_HZ
   input  logic              rst_n,          // async assert, sync deassert
@@ -102,6 +109,12 @@ module ultra_sd_top #(
   inout  wire               sd_cmd,
   inout  wire  [3:0]        sd_dat,
   input  logic              sd_cd           // ACTIVE LOW: 0 = present
+`ifdef ULTRA_SD_DEBUG_PORT
+  ,
+  // Komut merdiveninin gozlem kelimesi. Port yalnizca makro tanimliyken var;
+  // ultra_sd_cmd'deki yorum neden gerektigini anlatiyor.
+  output logic [63:0]       dbg
+`endif
 );
 
   import ultra_sd_pkg::*;
@@ -277,9 +290,12 @@ module ultra_sd_top #(
     .stat_clear_i     (ctrl[CTRL_STAT_CLEAR_BIT]),
     .sd_cd_i          (sd_cd),
 
-    // Oran init merdiveninden gelir; yazilim CFG_CLK ile ustune yazabilir
-    // (R-DEG-1), bu secim ultra_sd_init icinde cozulur.
-    .clk_div_i        (init_clk_div),
+    // Oran CFG_CLK'ten gelir: merdiven kendi secimini bu kayda yukler, yazilim
+    // da uzerine yazabilir (R-DEG-1). Daha once init_clk_div dogrudan buraya
+    // bagliydi ve CFG_CLK hicbir yere gitmiyordu -- bolen yazilimdan
+    // degistirilemiyor, R-MEAS-6 karakterizasyon taramasi da tek saatte
+    // kosuyordu. RAMP fazinda system_controller yine INIT_CLK_DIV'e zorlar.
+    .clk_div_i        (cfg_clk),
 
     .init_done_i      (init_done),
     .start_i          (ctrl[CTRL_START_BIT]),
@@ -386,6 +402,7 @@ module ultra_sd_top #(
     .BLOCKS               (blocks),
     .XFER                 (xfer_dir),
     .CFG_CLK              (cfg_clk),
+    .CFG_CLK_HW           (init_clk_div),
     .CFG_PHY              (cfg_phy),
     .rd_xfer_busy         (),
 
@@ -543,6 +560,7 @@ module ultra_sd_top #(
   // ===========================================================================
   ultra_sd_cmd #(
     .CMD_RETRIES        (CRC_RETRIES),
+    .NCC_GAP_CLK        (NCC_GAP_CLK),
     .CLK_DIV_INIT       (CLK_DIV_INIT),
     .CLK_DIV_DS         (CLK_DIV_DS),
     .CLK_DIV_HS         (CLK_DIV_HS),
@@ -578,6 +596,9 @@ module ultra_sd_top #(
     .init_done_o     (init_done),
     .init_err_o      (init_err),
     .init_err_code_o (init_err_code),
+`ifdef ULTRA_SD_DEBUG_PORT
+    .dbg_o           (dbg),
+`endif
 
     .dat_rd_start_o  (init_dat_start),
     .dat_rd_bytes_o  (init_dat_bytes),
@@ -674,12 +695,11 @@ module ultra_sd_top #(
   );
   /* verilator lint_on PINCONNECTEMPTY */
 
-  // Henuz tuketicisi olmayan, ama sozlesmede duran sinyaller. CFG_CLK yazilim
-  // override'i ultra_sd_init icinde cozulecek (R-DEG-1); init_busy STATUS'ta
-  // BUSY ile birlesmiyor, cunku Table 5-1 BUSY'yi transfere bagliyor.
+  // Henuz tuketicisi olmayan, ama sozlesmede duran sinyaller. init_busy
+  // STATUS'ta BUSY ile birlesmiyor, cunku Table 5-1 BUSY'yi transfere bagliyor.
   /* verilator lint_off UNUSED */
   logic unused_ok;
-  assign unused_ok = ^{cfg_clk, init_busy, cfg_phy[CFG_PHY_FORCE_DS]};
+  assign unused_ok = ^{init_busy, cfg_phy[CFG_PHY_FORCE_DS]};
   /* verilator lint_on UNUSED */
 
 endmodule

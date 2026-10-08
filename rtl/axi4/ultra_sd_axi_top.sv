@@ -53,6 +53,7 @@ module ultra_sd_axi_top
   output logic [BLOCKS_W-1:0]  BLOCKS,
   output logic                 XFER,
   output logic [CFG_CLK_W-1:0] CFG_CLK,
+  input  logic [CFG_CLK_W-1:0] CFG_CLK_HW,
   output logic [CFG_PHY_W-1:0] CFG_PHY,
   output logic                 rd_xfer_busy,
 
@@ -153,6 +154,7 @@ module ultra_sd_axi_top
     .BLOCKS              (BLOCKS),
     .XFER                (XFER),
     .CFG_CLK             (CFG_CLK),
+    .CFG_CLK_HW          (CFG_CLK_HW),
     .CFG_PHY             (CFG_PHY),
     .STATUS              (STATUS),
     .ERR                 (ERR),

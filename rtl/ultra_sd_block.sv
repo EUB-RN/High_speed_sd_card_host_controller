@@ -130,7 +130,7 @@ module ultra_sd_block #(
   logic [RTY_W-1:0]    retry_q;
   logic                drop_q;
   logic                stopped_q;
-  logic [2:0]          rd_idle_q;
+  logic [2:0]          arm_idle_q;
   logic                rd_rewind_q;
   logic                wr_rewind_q;
 
@@ -211,9 +211,9 @@ module ultra_sd_block #(
   assign tx_data_o = wr_data_i;
   assign wr_en_o   = (step_q == S_WR_DATA) && tx_take_i;
 
-  assign dat_start_o = ((step_q == S_RD_ARM) && (rd_idle_q == 3'd7))
+  assign dat_start_o = ((step_q == S_RD_ARM) && (arm_idle_q == 3'd7))
                     || ((step_q == S_RD_DATA) && !drop_q && rd_room_ok_i)
-                    || (step_q == S_WR_ARM);
+                    || ((step_q == S_WR_ARM) && (arm_idle_q == 3'd7));
   assign dat_dir_o   = dir_q;
 
   logic cmd_ack, cmd_fail, cmd_ok;
@@ -304,7 +304,7 @@ module ultra_sd_block #(
       to_q       <= '0;
       drop_q     <= 1'b0;
       stopped_q  <= 1'b0;
-      rd_idle_q  <= '0;
+      arm_idle_q <= '0;
       stat_gap_q <= '0;
       clr_sync_q <= 2'b00;
       clr_q      <= 1'b0;
@@ -322,8 +322,14 @@ module ultra_sd_block #(
         stat_gap_q <= stat_gap_q + STAT_DUR_W'(1);
       end
 
-      if ((step_q != S_RD_ARM) || card_busy_i) rd_idle_q <= '0;
-      else if (rd_idle_q != 3'd7)               rd_idle_q <= rd_idle_q + 3'd1;
+      // Eight consecutive cycles of a quiet card before either arm releases.
+      // card_busy_o is only meaningful while L2's cell is idle, so the count
+      // has to finish before dat_start_o arms the cell -- otherwise the host
+      // masks the very signal it is waiting on.
+      if (((step_q != S_RD_ARM) && (step_q != S_WR_ARM)) || card_busy_i)
+        arm_idle_q <= '0;
+      else if (arm_idle_q != 3'd7)
+        arm_idle_q <= arm_idle_q + 3'd1;
 
       if (abort_evt) begin
         drop_q <= 1'b1;
@@ -348,7 +354,7 @@ module ultra_sd_block #(
                                    : S_RD_ARM;
           end
 
-          S_RD_ARM:    if (rd_room_ok_i && (rd_idle_q == 3'd7)) step_q <= S_CMD;
+          S_RD_ARM:    if (rd_room_ok_i && (arm_idle_q == 3'd7)) step_q <= S_CMD;
           S_PRE_ERASE: if (cmd_ok)       step_q <= S_CMD;
 
           S_CMD: if (cmd_ok) begin
@@ -373,7 +379,7 @@ module ultra_sd_block #(
             end
           end
 
-          S_WR_ARM: if (!card_busy_i && wr_block_ready_i) begin
+          S_WR_ARM: if (wr_block_ready_i && (arm_idle_q == 3'd7)) begin
             to_q   <= TO_W'(NAC_TIMEOUT_CLK);
             step_q <= S_WR_DATA;
           end
@@ -481,8 +487,17 @@ module ultra_sd_block #(
     end else if (!cmd_step || cmd_ack || abort_evt) begin
       cphase_q <= P_ISSUE;
     end else begin
+      // req_valid_o is high in P_ISSUE and P_ACC alike, and L2 loads on the
+      // level of it whenever its sender is idle -- so the handshake has to be
+      // considered done on the FIRST cycle ready is seen, P_ISSUE included.
+      // Stepping P_ISSUE -> P_ACC unconditionally missed that cycle: L2 loaded
+      // and sent the command, valid stayed high through P_ACC, and when the
+      // sender went idle again it loaded the very same request a second time.
+      // Every command went out twice, which a card answers twice -- and a
+      // duplicated CMD17 queues a second block that then collides with the
+      // next write.
       unique case (cphase_q)
-        P_ISSUE: cphase_q <= P_ACC;
+        P_ISSUE: cphase_q <= req_ready_i ? P_WAIT : P_ACC;
         P_ACC:   if (req_ready_i) cphase_q <= P_WAIT;
         default: ;
       endcase
