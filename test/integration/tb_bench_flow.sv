@@ -42,6 +42,7 @@ module tb_bench_flow;
   localparam real BIT_NS = 100.0 * UART_CLKS_PER_BIT;   // 100 ns per clk at 10 MHz
 
   // Field order, as bench_core's table emits it.
+  localparam int F_SUITE    = 38;
   localparam int F_VERSION  = 0;
   localparam int F_CARD_BLK = 1;
   localparam int F_INIT_MS  = 2;
@@ -80,11 +81,16 @@ module tb_bench_flow;
   localparam int F_RD1_TTF  = 35;
   localparam int F_WR1_CYC  = 36;
   localparam int F_WR1_BSY  = 37;
-  localparam int F_CH_DIV   = 38;   // 5 entries
-  localparam int F_CH_RD    = 43;   // 5 entries
-  localparam int F_CH_WR    = 48;   // 5 entries
-  localparam int F_CH_GAP   = 53;   // 5 entries
-  localparam int NFIELDS    = 58;
+  // Derived, not counted by hand: bench_core prints 38 scalars, then SUITE, then
+  // four per-divisor groups. Adding a scalar moves every group, and four
+  // hardcoded bases is four places to forget.
+  localparam int F_NSCALAR  = 39;   // through SUITE at 38
+  localparam int F_NDIV     = 5;
+  localparam int F_CH_DIV   = F_NSCALAR;
+  localparam int F_CH_RD    = F_CH_DIV + F_NDIV;
+  localparam int F_CH_WR    = F_CH_RD  + F_NDIV;
+  localparam int F_CH_GAP   = F_CH_WR  + F_NDIV;
+  localparam int NFIELDS    = F_NSCALAR + 4 * F_NDIV;
 
   logic clk = 0;
   logic rst_n = 1;

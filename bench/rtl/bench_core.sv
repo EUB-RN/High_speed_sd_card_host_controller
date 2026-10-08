@@ -87,7 +87,31 @@ module bench_core
   // for a 99 MHz system clock. It is a parameter rather than a localparam only
   // so that simulation can leave out the 400 kHz point, which costs more
   // simulated time than the whole rest of the sequence put together.
-  parameter logic [5*8-1:0] DIV_TABLE = {8'd248, 8'd16, 8'd8, 8'd4, 8'd2}
+  parameter logic [5*8-1:0] DIV_TABLE = {8'd248, 8'd16, 8'd8, 8'd4, 8'd2},
+
+  // ---- which suite this build runs ----------------------------------------
+  // 0 = SUITE_TIER, the graded measurement: phase scan, precondition, RUNS x
+  //     (64 MB write + verified read), characterisation sweep, latency. This is
+  //     the run every reported figure comes from, and it is the default.
+  // 1 = SUITE_TIMING, the sampling-phase margin matrix below.
+  //
+  // A build-time parameter rather than a switch on the board: bench.cst assigns
+  // no button, and that file's own rule is that a pin traces to Table 2-2 or to
+  // a pin_check run on hardware -- inventing one here would be the only
+  // unverified pad in the design after uart_tx. bench_defines.sv can override
+  // the default with `define BENCH_SUITE, the same way it turns the debug port
+  // on, and simulation passes it as a parameter.
+  parameter int SUITE         = 0,
+
+  // Payload per matrix cell, in blocks. Small on purpose: a wrong sampling
+  // phase corrupts the very first group it samples, so volume buys nothing here
+  // and the matrix is 5 x 16 cells.
+  parameter int TIMING_BLOCKS = 8,
+
+  // Highest phase the matrix tries. SAMPLE_PHASE is 4 bits (CFG_PHY_PHASE_W),
+  // and at divisor d only d/2 phases are distinct -- at divisor 2 there are two
+  // and the rest alias onto them, which is itself visible in the mask.
+  parameter int TIMING_PHASE_MAX = 15
 ) (
   input  logic        clk,
   input  logic        rst_n,
@@ -143,8 +167,14 @@ module bench_core
   localparam int NDIV            = 5;
   localparam int CALC_BASE       = 8;                 // scalar figures first
   localparam int CALC_STEPS      = CALC_BASE + 2 * NDIV;
-  localparam int FIELD_BASE      = 38;
+  // 38 scalar fields, then SUITE at 38, then four per-divisor groups. SUITE
+  // goes after every existing scalar so no index below it moves: the report
+  // decoder in test/integration/tb_bench_flow.sv names those by position.
+  localparam int FIELD_BASE      = 39;
   localparam int NFIELDS         = FIELD_BASE + 4 * NDIV;
+
+  localparam int SUITE_TIER      = 0;
+  localparam int SUITE_TIMING    = 1;
 
   // R-FUNC-7 allows 500 ms for init, so wait 750 before calling the card dead.
   // R-FUNC-7 puts the init budget at 500 ms, and 750 ms used to be this
@@ -504,7 +534,13 @@ module bench_core
     // o noktada saat hedef bolene oturmus ve kart isinmis olur, yani olculen
     // sey gercekten tek bir istegin maliyeti.
     S_LAT_WR,
-    S_LAT_RD
+    S_LAT_RD,
+    // Sona eklendi, yukaridaki her durum FAILFROM numarasini korur.
+    // SUITE_TIMING'in uc durumu: hucreyi kur, yaz, dogrulayarak oku.
+    S_TM_SET,
+    S_TM_WR,
+    S_TM_RD,
+    S_TM_NEXT
   } sstate_e;
 
   sstate_e     sst_q;
@@ -519,6 +555,67 @@ module bench_core
   // Is there another SAMPLE_PHASE left to try?
   logic        next_phase;
   assign next_phase = (phase_q != 4'(PHASE_MAX));
+
+  // ---- SUITE_TIMING: the sampling-phase margin matrix -----------------------
+  // One 16-bit mask per divisor, bit p set when phase p carried a short write
+  // and a verified read-back with no error and no mismatch.
+  //
+  // The mask is the measurement, not the pass. A column that works at exactly
+  // one phase is a column one PVT corner away from not working, and the tier
+  // run cannot tell you that: its scan stops at the first phase that verifies,
+  // so a one-phase-wide window and a six-phase-wide window look identical to it.
+  //
+  // The matrix is divisor x phase and NOT divisor x phase x bus width, because
+  // bus width is not reachable from the register map: CFG_PHY.FORCE_1BIT only
+  // narrows the HOST (system_controller.sv, bus_wide_q <= bus_4bit_i &
+  // ~force_1bit_i) while the card's width is whatever the init ladder's ACMD6
+  // left it at. Forcing 1-bit here would desynchronise the two and fail every
+  // cell for a reason that has nothing to do with timing.
+  logic [15:0] tm_mask_q [NDIV];
+
+  // Widest run of set bits in a mask, and the phase at its centre -- the phase
+  // a driver should pick, as far from either edge of the window as it gets.
+  function automatic logic [7:0] tm_window(input logic [15:0] mask);
+    logic [7:0] run, best;
+    begin
+      run  = 8'd0;
+      best = 8'd0;
+      for (int i = 0; i < 16; i++) begin
+        if (mask[i]) begin
+          run = run + 8'd1;
+          if (run > best) best = run;
+        end else begin
+          run = 8'd0;
+        end
+      end
+      tm_window = best;
+    end
+  endfunction
+
+  function automatic logic [7:0] tm_best_phase(input logic [15:0] mask);
+    logic [7:0] run, best;
+    logic [7:0] end_of_best;
+    begin
+      run         = 8'd0;
+      best        = 8'd0;
+      end_of_best = 8'd0;
+      for (int i = 0; i < 16; i++) begin
+        if (mask[i]) begin
+          run = run + 8'd1;
+          if (run > best) begin
+            best        = run;
+            end_of_best = 8'(i);
+          end
+        end else begin
+          run = 8'd0;
+        end
+      end
+      // No phase worked: say so rather than naming phase 0, which is a real
+      // phase and would read as a result.
+      tm_best_phase = (best == 8'd0) ? 8'hFF
+                                     : (end_of_best - ((best - 8'd1) / 8'd2));
+    end
+  endfunction
 
   // Worst and best elapsed counts. Worst elapsed = lowest rate = the graded one.
   logic [31:0] rd_cyc_min_q, rd_cyc_max_q, wr_cyc_min_q, wr_cyc_max_q;
@@ -693,25 +790,40 @@ module bench_core
       8'd35: begin rep_label = "RD1_TTF "; rep_value = lat_rd_ttf_q;             end
       8'd36: begin rep_label = "WR1_CYC "; rep_value = lat_wr_cyc_q;             end
       8'd37: begin rep_label = "WR1_BSY "; rep_value = lat_wr_bsy_q;             end
+      // Which suite produced everything above and below it. Printed because the
+      // two suites leave each other's fields at their reset values, and a log
+      // without this line cannot be told apart from a run that failed early.
+      8'd38: begin rep_label = "SUITE   "; rep_value = 32'(SUITE);               end
       default: begin
-        // Characterisation rows: the divisor, then its read rate, then its write
-        // rate, one group after another.
+        // Four per-divisor groups. SUITE_TIER prints the characterisation
+        // sweep; SUITE_TIMING prints the phase margin matrix in the same slots,
+        // so the field COUNT does not move between suites and one decoder reads
+        // both.
+        //
+        //   TM_MASK  bit p set = phase p carried a verified write + read-back
+        //   TM_WIN   widest run of set bits: the margin, in phases
+        //   TM_BEST  phase at the centre of that run, 255 = nothing worked
         if (int'(rep_idx) < FIELD_BASE + NDIV) begin
           ch_row    = int'(rep_idx) - FIELD_BASE;
-          rep_label = "CH_DIV  ";
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_DIV  " : "CH_DIV  ";
           rep_value = 32'(DIV_TABLE[ch_row*8 +: 8]);
         end else if (int'(rep_idx) < FIELD_BASE + 2 * NDIV) begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + NDIV);
-          rep_label = "CH_RDx10";
-          rep_value = char_rd_mbps_q[ch_row];
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_MASK " : "CH_RDx10";
+          rep_value = (SUITE == SUITE_TIMING) ? 32'(tm_mask_q[ch_row])
+                                              : char_rd_mbps_q[ch_row];
         end else if (int'(rep_idx) < FIELD_BASE + 3 * NDIV) begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + 2 * NDIV);
-          rep_label = "CH_WRx10";
-          rep_value = char_wr_mbps_q[ch_row];
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_WIN  " : "CH_WRx10";
+          rep_value = (SUITE == SUITE_TIMING)
+                        ? 32'(tm_window(tm_mask_q[ch_row]))
+                        : char_wr_mbps_q[ch_row];
         end else begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + 3 * NDIV);
-          rep_label = "CH_GAP  ";
-          rep_value = char_gap_q[ch_row];
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_BEST " : "CH_GAP  ";
+          rep_value = (SUITE == SUITE_TIMING)
+                        ? 32'(tm_best_phase(tm_mask_q[ch_row]))
+                        : char_gap_q[ch_row];
         end
       end
     endcase
@@ -786,7 +898,7 @@ module bench_core
               rq_valid = 1'b1;
               rq_addr  = info_step_q ? REG_CARD_BLK : REG_VERSION;
             end
-            S_SET_CFG, S_CHAR_SET: begin
+            S_SET_CFG, S_CHAR_SET, S_TM_SET: begin
               rq_valid = 1'b1;
               rq_we    = 1'b1;
               case (cfg_step_q)
@@ -1062,6 +1174,7 @@ module bench_core
         char_gap_q[i]     <= '0;
         char_rd_mbps_q[i] <= '0;
         char_wr_mbps_q[i] <= '0;
+        tm_mask_q[i]      <= '0;
       end
     end else begin
       x_start   <= 1'b0;
@@ -1110,7 +1223,8 @@ module bench_core
               cardblk_q  <= rsp_rdata;
               phase_q    <= '0;
               cfg_step_q <= '0;
-              sst_q      <= S_SET_CFG;
+              div_idx_q  <= '0;
+              sst_q      <= (SUITE == SUITE_TIMING) ? S_TM_SET : S_SET_CFG;
             end
           end
         end
@@ -1336,6 +1450,80 @@ module bench_core
         // One divider stepped through the formulas of Figure 12-2. The operands
         // are selected by calc_q in the block above; here we only start it and
         // file the answer.
+        // ---- SUITE_TIMING: one cell per (divisor, phase) -------------------
+        // Writes before it reads for the same reason the tier run's scan does:
+        // nothing has put LFSR data on the card yet, so a read-only cell would
+        // compare the card's previous contents against the generator and fail
+        // at every phase. The write side is not free of the phase either -- the
+        // card samples our data, but the CRC status token it answers with comes
+        // back on DAT0 and we have to sample THAT correctly to know the block
+        // landed, so a bad phase can fail in either direction.
+        S_TM_SET: begin
+          if (rsp_valid) begin
+            if (cfg_step_q == 2'd2) begin
+              cfg_step_q <= '0;
+              x_dir      <= 1'b1;
+              x_lba      <= 32'(LBA_BASE);
+              x_blocks   <= 24'(TIMING_BLOCKS);
+              x_start    <= 1'b1;
+              sst_q      <= S_TM_WR;
+            end else begin
+              cfg_step_q <= cfg_step_q + 2'd1;
+            end
+          end
+        end
+
+        S_TM_WR: begin
+          if (x_done) begin
+            if (s_err_q[ERR_LSB +: 8] == 8'(ERR_OK)) begin
+              x_dir    <= 1'b0;
+              x_lba    <= 32'(LBA_BASE);
+              x_blocks <= 24'(TIMING_BLOCKS);
+              x_start  <= 1'b1;
+              sst_q    <= S_TM_RD;
+            end else begin
+              sst_q    <= S_TM_NEXT;   // cell failed on the write side
+            end
+          end
+        end
+
+        S_TM_RD: begin
+          if (x_done) begin
+            // A cell counts as working only if the read came back with no error
+            // code, no mismatched beat and no stall. Anything less is a phase
+            // that cannot be trusted, which is the whole point of the mask.
+            if ((s_err_q[ERR_LSB +: 8] == 8'(ERR_OK)) &&
+                (mism_q == 32'd0) && !x_stalled_q) begin
+              tm_mask_q[int'(div_idx_q)][phase_q] <= 1'b1;
+            end
+            mism_total_q <= mism_total_q + mism_q;
+            sst_q        <= S_TM_NEXT;
+          end
+        end
+
+        // The matrix's single exit. A state rather than a task called from both
+        // cell endings: this repository has already been bitten by
+        // GowinSynthesis miscompiling a construct that simulated correctly
+        // (ultra_sd_cmd.sv's ladder ROM, which came back as a constant zero),
+        // so the sequencer stays a plain case over plain state.
+        S_TM_NEXT: begin
+          if (phase_q != 4'(TIMING_PHASE_MAX)) begin
+            phase_q    <= phase_q + 4'd1;
+            cfg_step_q <= '0;
+            sst_q      <= S_TM_SET;
+          end else if (div_idx_q != 3'(NDIV - 1)) begin
+            div_idx_q  <= div_idx_q + 3'd1;
+            phase_q    <= '0;
+            cfg_step_q <= '0;
+            sst_q      <= S_TM_SET;
+          end else begin
+            // No S_CALC: the matrix needs no division, and the window
+            // arithmetic is combinational off the mask in the report mux.
+            rep_start <= 1'b1;
+            sst_q     <= S_REPORT;
+          end
+        end
+
         S_CALC: begin
           if (!div_busy && !div_done) begin
             div_start <= 1'b1;
