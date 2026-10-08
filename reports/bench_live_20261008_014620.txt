@@ -1,0 +1,1 @@
+listening on FT2232H channel B at 115200 8N1 (up to 450000 ms for the first byte, then 3000 ms of silence ends the capture)

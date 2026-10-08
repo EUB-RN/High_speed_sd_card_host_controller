@@ -151,27 +151,27 @@ module ultra_sd_cmd
 
   localparam int R2_CRC_SKIP    = 8;
 
-  localparam int TX_CNT_W  = $clog2(CMD_FRAME_BITS + 1);
-  localparam int RX_CNT_W  = $clog2(RESP_LONG + 1);
-  localparam int TIMER_MAX = (NCR_TIMEOUT_CLK > NCC_GAP_CLK) ? NCR_TIMEOUT_CLK : NCC_GAP_CLK;
-  localparam int TIMER_W   = $clog2(TIMER_MAX + 1);
-  localparam int RTY_W     = $clog2(CMD_RETRIES + 1);
+  localparam  TX_CNT_W  = $clog2(CMD_FRAME_BITS + 1);
+  localparam  RX_CNT_W  = $clog2(RESP_LONG + 1);
+  localparam  TIMER_MAX = (NCR_TIMEOUT_CLK > NCC_GAP_CLK) ? NCR_TIMEOUT_CLK : NCC_GAP_CLK;
+  localparam  TIMER_W   = $clog2(TIMER_MAX + 1);
+  localparam  RTY_W     = $clog2(CMD_RETRIES + 1);
 
-  localparam int R1_READY_FOR_DATA  = 8;
-  localparam int R1_OUT_OF_RANGE    = 31;
-  localparam int R1_ADDRESS_ERROR   = 30;
-  localparam int R1_BLOCK_LEN_ERROR = 29;
-  localparam int R1_ERASE_SEQ_ERROR = 28;
-  localparam int R1_ERASE_PARAM     = 27;
-  localparam int R1_WP_VIOLATION    = 26;
-  localparam int R1_LOCK_UNLOCK_FAIL= 24;
-  localparam int R1_COM_CRC_ERROR   = 23;
-  localparam int R1_ILLEGAL_COMMAND = 22;
-  localparam int R1_CARD_ECC_FAILED = 21;
-  localparam int R1_CC_ERROR        = 20;
-  localparam int R1_ERROR           = 19;
-  localparam int R1_CSD_OVERWRITE   = 16;
-  localparam int R1_AKE_SEQ_ERROR   = 3;
+  localparam  R1_READY_FOR_DATA  = 8;
+  localparam  R1_OUT_OF_RANGE    = 31;
+  localparam  R1_ADDRESS_ERROR   = 30;
+  localparam  R1_BLOCK_LEN_ERROR = 29;
+  localparam  R1_ERASE_SEQ_ERROR = 28;
+  localparam  R1_ERASE_PARAM     = 27;
+  localparam  R1_WP_VIOLATION    = 26;
+  localparam  R1_LOCK_UNLOCK_FAIL= 24;
+  localparam  R1_COM_CRC_ERROR   = 23;
+  localparam  R1_ILLEGAL_COMMAND = 22;
+  localparam  R1_CARD_ECC_FAILED = 21;
+  localparam  R1_CC_ERROR        = 20;
+  localparam  R1_ERROR           = 19;
+  localparam  R1_CSD_OVERWRITE   = 16;
+  localparam  R1_AKE_SEQ_ERROR   = 3;
 
   localparam  [31:0] R1_ERR_MASK =
       (32'd1 << R1_OUT_OF_RANGE)    | (32'd1 << R1_ADDRESS_ERROR)   |

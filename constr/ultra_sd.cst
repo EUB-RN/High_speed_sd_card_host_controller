@@ -1,0 +1,71 @@
+// ----------------------------------------------------------------------------
+// ultra_sd.cst -- SD slot pin map, Tang Primer 20K + Dock (GW2A-18C PG256)
+//
+// WHAT THIS FILE IS, AND WHAT IT IS NOT
+//
+// Section 2.4 of the requirements says a verified .cst is supplied with the kit
+// and must not be edited. That file is authoritative at acceptance. This one
+// exists because a .cst is needed to place and route ANYTHING, including our
+// own benchmark bitstream, and the kit file covers the client's harness, not
+// ours. Its contents are Table 2-2 transcribed, nothing invented:
+//
+//   Slot pin  Signal     FPGA pin  External pull-up
+//   1         DAT2       M10       10k -> 3V3
+//   2         DAT3/CD    N11       10k -> 3V3
+//   3         CMD        R14       10k -> 3V3
+//   5         CLK        N10       none
+//   7         DAT0       M8        10k -> 3V3
+//   8         DAT1       M7        10k -> 3V3
+//   10        DET_A      D15       4k7 -> 3V3, ACTIVE LOW
+//
+// If a pin here ever disagrees with the supplied .cst, the supplied one wins
+// and this file is the bug. These numbers also match pin_check/sd_pin_check.cst,
+// which was validated on the board.
+//
+// PULL_MODE=NONE EVERYWHERE, DELIBERATELY
+//
+// Table 2-3: the slot already carries 10k external pull-ups on CMD and DAT0-3,
+// and "do not enable Gowin internal pull-ups as well". Internal pull-ups would
+// parallel the external ones and change the RC on a line that has to settle
+// inside a 20 ns bit cell at 50 MHz. CLK needs no pull-up (push-pull output)
+// and DET_A has its own 4k7.
+//
+// PORT NAMES
+//
+// These are the pad-facing port names of ultra_sd_top (Section 5.2). A wrapper
+// that renames them -- the benchmark top does not -- must rename here too.
+// Gowin reads several .cst files per project, so a wrapper adds its own pins in
+// its own file and this one stays the single source of truth for the slot.
+// ----------------------------------------------------------------------------
+
+// ---- clock out to the card -------------------------------------------------
+// Push-pull, no pull-up. DRIVE is the one electrical knob worth touching here:
+// the clock is the fastest edge in the design and the only signal the card
+// cannot resynchronise to, so it gets the same drive as the data lines and no
+// more -- overdriving it rings on an unterminated 10 cm dock trace.
+IO_LOC  "sd_clk"    N10;
+IO_PORT "sd_clk"    IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+
+// ---- command line, bidirectional -------------------------------------------
+// Open-drain during identification, push-pull afterwards; the core drives the
+// IOBUF OEN either way, so the pad is a plain tristate LVCMOS33 output.
+IO_LOC  "sd_cmd"    R14;
+IO_PORT "sd_cmd"    IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+
+// ---- four data lines, bidirectional ----------------------------------------
+// Order matters and is easy to get wrong: DAT0/1 are M8/M7 (a descending pair)
+// while DAT2/3 are M10/N11. All four are in the right-hand bank.
+IO_LOC  "sd_dat[0]" M8;
+IO_PORT "sd_dat[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_dat[1]" M7;
+IO_PORT "sd_dat[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_dat[2]" M10;
+IO_PORT "sd_dat[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_dat[3]" N11;
+IO_PORT "sd_dat[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+
+// ---- card detect, input only -----------------------------------------------
+// DET_A, active low: 0 = card present. The core debounces it (cdc.md row 5),
+// so nothing here needs to.
+IO_LOC  "sd_cd"     D15;
+IO_PORT "sd_cd"     IO_TYPE=LVCMOS33 PULL_MODE=NONE;

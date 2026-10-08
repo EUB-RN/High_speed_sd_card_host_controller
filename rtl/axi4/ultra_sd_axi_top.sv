@@ -5,7 +5,7 @@ module ultra_sd_axi_top
 #(
   parameter int DATA_W             = 32,
   parameter int ADDR_W             = 8,
-  parameter int RD_FIFO_BLOCKS     = 2,
+  parameter int RD_FIFO_BLOCKS     = 4,
   parameter int WR_FIFO_BLOCKS     = 2,
 
   parameter logic [31:0] SD_ULTRA_BASE_ADDR = 32'h0000_0000

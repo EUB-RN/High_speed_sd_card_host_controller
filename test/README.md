@@ -66,6 +66,7 @@ test/
                         checker macros  (see common/README.md)
   unit/                 one module against its own contract
   functional/           end-to-end scenarios against the card model
+  integration/          adjacent RTL layers exercised together
   vip/                  bus interfaces against the AMBA specification
   error_injection/      hostile environment, plus R-DEL-7 RTL mutation
   formal/               SVA properties and proofs
@@ -113,17 +114,40 @@ proof is run.
 
 | Test | Category | Module | What it checks |
 |---|---|---|---|
-| `clk_controller` | `unit` | `clk_controller` | reset state; the startup guard; the divisor to ratio mapping across 400 kHz .. 50 MHz; even-rounding and clamping; duty cycle; edge-strobe alignment; glitch-free adoption of a new `CFG_CLK`; gating in both `CLK_GATING_EN` builds |
+| `clk_controller` | `unit` | `clk_controller` | reset state, divisor mapping, rounding/clamping, duty cycle and glitch-free runtime divisor changes |
+| `phy_clk_gate` | `unit` | `clk_controller` + `ultra_sd_phy_gowin` | clock gates, low parking, runt-pulse rejection and pad clock mux handoff |
+| `crc7` | `unit` | `ultra_sd_crc7` | CMD0/CMD8 known-answer vectors and 100 random matrix/reference comparisons |
+| `crc16` | `unit` | `ultra_sd_crc16` | CRC-16/XMODEM known-answer vector and 100 random matrix/reference comparisons |
+| `ultra_sd_reg` | `unit` | `ultra_sd_reg` | reset values, RO/RW/W1S/W1C behaviour, byte strobes, request snapshot, IRQ collision and SLVERR |
+| `async_fifo` | `unit` | `async_fifo` | asynchronous ordering, speculative commit/rewind, full/overflow and underflow |
+| `ultra_sd_cmd` | `unit` | `ultra_sd_cmd` | exact CMD0 frame/CRC, bounded response timeout and retry event |
+| `system_controller` | `unit` | `system_controller` | reset release, active-low debounce, ramp-edge count, transfer phases, lane locking and soft reset |
+| `ultra_sd_line` | `functional` | `ultra_sd_line` | runtime 8-byte framing with a 512-byte-capable engine, 1/4-bit TX/RX, CRC corruption and write-status token errors |
+| `init_ladder_basic` | `functional` | `ultra_sd_init` | CMD0..ACMD6 basic ladder, R7/OCR/RCA/CSD decoding and card removal |
+| `init_ladder_full` | `functional` | `ultra_sd_init` | 176 checks over SCR, ACMD6, CMD6 status, 4-bit/HS success, 1-bit/DS fallback, CRC, DAT timeout, CMD8 mismatch, command errors and removal |
+| `block_requests` | `functional` | `ultra_sd_block` | 59 checks: ranges, CMD17/18/24/25, ACMD23/CMD12/CMD13, CRC retry exhaustion, backpressure, tokens and timeouts |
+| `block_flow` | `functional` | `ultra_sd_block` | payload forwarding, speculative commit/rewind, multi-block read/write and recovery sequences |
+| `init_cmd_stack` | `integration` | init + command arbiter + command engine + CRC7 | serial CMD0..ACMD6 exchange against a behavioural card |
+| `top_integration` | `integration` | complete `ultra_sd_top` + SD card model | real pads and AXI registers, 74-clock ramp, full SCR/ACMD6/CMD6 DAT path, 4-bit High Speed and decoded capacity |
+| `block_stat` | `integration` | `ultra_sd_block` + `ultra_sd_stat` | DONE/ERR/IRQ propagation, SD-cycle counters and STAT_CLEAR |
+| `block_axis_read` | `integration` | `ultra_sd_block` + async FIFO + AXI read master | 512-byte speculative block, CRC commit visibility, ordering and request-level tlast |
+| `block_axis_write` | `integration` | AXI write slave + async FIFO + `ultra_sd_block` | full-block buffering, 128-beat ordering/tlast, block consumption, commit and drain |
+| `vip_selftest` / `vip-cocotb` | `vip` | AXI/register/stream blocks | monitor calibration plus AXI4-Lite and AXI4-Stream protocol/backpressure tests |
+| `sd_card_model` | `vip` | SD card behavioural VIP | pin-level init commands, 4-bit block read/write, CRC7/CRC16, storage backdoor and fault injection |
 
-Everything else is still to be written. Each category's `tests.mk` carries its
-own list of what is missing, which is the authoritative version of the
-summary below.
+End-to-end top-level block transfers, broader fault injection, coverage,
+stress and performance tests remain. Each category's `tests.mk` carries the
+authoritative list.
+
+`bench_flow` now gets through the complete SCR/ACMD6/CMD6 initialization and
+the single-block write/read phase scan.  It deliberately remains a failing
+regression at the multi-block preconditioning write: the second/next block is
+cut short and the core reports `ERR_DAT_TIMEOUT`.  This is a real top-level DAT
+write sequencing defect, not an expected timeout or a disabled assertion.
 
 ## Still required by R-DEL-6
 
-- the initialisation ladder (Section 6.1 / Appendix B) -- `functional/`
-- single-block and multi-block read -- `functional/`
-- single-block and multi-block write -- `functional/`
+- top-level single-block and multi-block read/write through AXI and SD pads
 - CRC error injection and recovery -- `error_injection/`
 - AXI4-Lite register access, including the SLVERR path -- `vip/`
 

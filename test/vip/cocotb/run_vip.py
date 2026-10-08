@@ -12,7 +12,7 @@ import os
 import sys
 from pathlib import Path
 
-from cocotb_tools.runner import get_runner
+from cocotb_tools.runner import get_results, get_runner
 
 TEST_DIR = Path(__file__).resolve().parents[2]
 REPO = TEST_DIR.parent
@@ -63,7 +63,15 @@ def main(argv):
         plusargs=plusargs,
         extra_env={"PYTHONPATH": str(TEST_DIR / "vip" / "cocotb")},
     )
-    print(f"\nresults: {results}")
+    # runner.test() returns the results file whether the tests passed or not,
+    # so the verdict has to be read back out of it. Without this the category
+    # exited 0 with failing tests and `make` reported the VIP lane green.
+    total, failed = get_results(Path(results))
+    print(f"\nresults: {results}  ({total} tests, {failed} failed)")
+    if failed:
+        print(f"vip: {failed} of {total} cocotb tests FAILED")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

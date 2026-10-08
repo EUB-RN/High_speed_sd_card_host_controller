@@ -21,12 +21,20 @@
 # same buses cocotbext-axi is driving. Agreement there is the cross-check; the
 # self-test is the calibration.
 
-vip_TESTS := vip_selftest
+vip_TESTS := vip_selftest sd_card_model
 
 vip_selftest_SRCS := $(PKG) \
                      $(TEST_DIR)/common/vip/axi4_lite_monitor.sv \
                      $(TEST_DIR)/common/vip/axis_monitor.sv \
                      $(TEST_DIR)/vip/tb_vip_selftest.sv
+
+sd_card_model_SRCS := $(PKG) \
+                      $(RTL_DIR)/crc/ultra_sd_crc7.sv \
+                      $(RTL_DIR)/crc/ultra_sd_crc16.sv \
+                      $(RTL_DIR)/ultra_sd_cmd.sv \
+                      $(RTL_DIR)/ultra_sd_line.sv \
+                      $(TEST_DIR)/common/models/sd_card_model.sv \
+                      $(TEST_DIR)/vip/tb_sd_card_model.sv
 
 # ---- the cocotb lane --------------------------------------------------------
 # A virtual environment rather than the system Python: cocotbext-axi pins a

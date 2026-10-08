@@ -48,8 +48,10 @@ async def start_read_transfer(env, blocks, pkt_beats=None):
     """
     beats = blocks * BEATS_PER_BLOCK
     env.dut.rd_pkt_beats.value = beats if pkt_beats is None else pkt_beats
-    await env.axil.write(R.REG_BLOCKS, blocks.to_bytes(4, "little"))
-    await env.axil.write(R.REG_XFER, (0).to_bytes(4, "little"))   # DIR = read
+    # BLOCKS and XFER_DIR share one word, so they go out in a single write --
+    # programming them separately clears whichever was written first.
+    await env.axil.write(R.REG_XFER_CFG,
+                         R.xfer_cfg(blocks, write=False).to_bytes(4, "little"))
     env.dut.sd_feed_en.value = 1
     await env.axil.write(R.REG_CTRL, (1).to_bytes(4, "little"))   # CTRL.START
     return beats

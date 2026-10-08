@@ -8,6 +8,9 @@ Table 5-1 and which offsets are supposed to answer SLVERR.
 
 Covers R-IF-1 (all five channels), R-IF-2 (register map and the SLVERR path),
 R-IF-3 (LBA latched at START).
+
+The map under test is the compacted one -- see vip_regs.py for the layout and
+for why it is not Table 5-1 verbatim.
 """
 
 import random
@@ -88,6 +91,61 @@ async def test_ro_registers(dut):
         after = int.from_bytes(op.data, "little")
         assert after == before, (
             f"RO register 0x{addr:02x} changed from 0x{before:08x} to 0x{after:08x}")
+
+    await env.finish()
+
+
+@cocotb.test()
+async def test_ctrl_status_word(dut):
+    """0x04 carries CTRL, STATUS, ERR and the IRQ pair in one word.
+
+    The compaction put four of Table 5-1's registers at one offset, so what
+    needs proving is that they still behave as four registers: the
+    hardware-driven halves must not be writable, and each field must be
+    reachable through its own byte strobe without disturbing its neighbours.
+    That last part is the whole cost of the packing -- a whole-word write to
+    this offset lands on CTRL and IRQ_EN together, and a driver that wants one
+    without the other has to use WSTRB.
+
+    Driven by hand for the same reason test_byte_strobes is: the strobes are
+    the point.
+    """
+    env = VipEnv(dut, axil_master=False)
+    await env.start()
+
+    # The harness drives STATUS, ERR and IRQ_SET at zero, so every bit outside
+    # IRQ_EN must read back zero no matter what is written.
+    resp = await manual_write(dut, R.REG_CTRL_STATUS, 0xFFFF_FFFF, 0b1111)
+    assert resp == AxiResp.OKAY, f"CTRL_STATUS write answered {AxiResp(resp).name}"
+    got, resp = await manual_read(dut, R.REG_CTRL_STATUS)
+    assert resp == AxiResp.OKAY
+    assert got == R.CTRL_STATUS_RW_MASK, (
+        f"CTRL_STATUS read 0x{got:08x} after an all-ones write, want "
+        f"0x{R.CTRL_STATUS_RW_MASK:08x}: only IRQ_EN may stick")
+
+    # CTRL through its own strobe: a START pulse must leave IRQ_EN alone.
+    resp = await manual_write(dut, R.REG_CTRL_STATUS,
+                              1 << R.CTRL_START_BIT, 0b0001)
+    assert resp == AxiResp.OKAY
+    got, _ = await manual_read(dut, R.REG_CTRL_STATUS)
+    assert (got >> R.IRQ_EN_LSB) & 0x7 == 0x7, (
+        f"a strobed CTRL write disturbed IRQ_EN: read 0x{got:08x}")
+    # CTRL is a pulse register, so none of what was just written is readable.
+    assert got & 0xF == 0, f"CTRL read back as 0x{got & 0xF:x}, want a pulse"
+
+    # IRQ_EN through its own strobe: clearing it must leave the rest alone.
+    resp = await manual_write(dut, R.REG_CTRL_STATUS, 0x0000_0000, 0b1000)
+    assert resp == AxiResp.OKAY
+    got, _ = await manual_read(dut, R.REG_CTRL_STATUS)
+    assert got == 0, (
+        f"IRQ_EN did not clear through its own byte strobe: 0x{got:08x}")
+
+    # STATUS and ERR are hardware-driven: their bytes must not take a write.
+    resp = await manual_write(dut, R.REG_CTRL_STATUS, 0x0000_FFFF, 0b0011)
+    assert resp == AxiResp.OKAY
+    got, _ = await manual_read(dut, R.REG_CTRL_STATUS)
+    assert got & 0x0000_FFFF == 0, (
+        f"STATUS/ERR took a write: read 0x{got:08x}, harness drives both at 0")
 
     await env.finish()
 

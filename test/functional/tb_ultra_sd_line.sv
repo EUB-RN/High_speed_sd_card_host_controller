@@ -33,18 +33,24 @@
 // -----------------------------------------------------------------------------
 module tb_ultra_sd_line;
   import ultra_sd_pkg::*;
-  localparam int NB = 16;             // yuk bayti (4'un kati)
+  localparam int NB = 8;              // yuk bayti (4'un kati)
   localparam int NW = NB / 4;         // kelime sayisi
 
   logic line_clk = 1'b0, rst_n = 1'b0;
-  logic [3:0] lane_en; logic dir, start;
+  logic bus_wide; logic dir, start;
   logic [31:0] tx_data; logic tx_take, tx_busy, tx_done;
   logic [31:0] rx_data; logic rx_valid, rx_busy, rx_done, rx_crc_ok;
   logic [2:0]  tx_status; logic tx_status_ok, tx_status_tmo, card_busy;
   logic [3:0] dat_out, dat_oe, dat_in;
+  // Table 5-2'nin iki sayaci artik bu modulun icinde (olaylari onun case
+  // kollari), o yuzden test onlari dogrudan okuyabiliyor.
+  logic stat_clear_tgl = 1'b0;
+  logic [31:0] stat_data_cnt, stat_busy_cnt;
 
-  ultra_sd_line #(.XFER_BYTES(NB)) dut (
-    .line_clk, .rst_n, .lane_en_i(lane_en), .dir_i(dir), .start_i(start),
+  ultra_sd_line #(.XFER_BYTES(BLOCK_BYTES)) dut (
+    .line_clk, .rst_n, .bus_wide_i(bus_wide), .dir_i(dir), .start_i(start),
+    .stat_clear_tgl_i(stat_clear_tgl), .stat_data_o(stat_data_cnt), .stat_busy_o(stat_busy_cnt),
+        .xfer_bytes_i(11'(NB)),
     .tx_data_i(tx_data), .tx_take_o(tx_take), .tx_busy_o(tx_busy), .tx_done_o(tx_done),
     .tx_status_o(tx_status), .tx_status_ok_o(tx_status_ok),
     .tx_status_tmo_o(tx_status_tmo), .card_busy_o(card_busy),
@@ -110,7 +116,7 @@ module tb_ultra_sd_line;
     int ci; int exp; int pay; logic [3:0] c0, c1, cj, eff;
     logic [31:0] w0; logic [15:0] ref_crc; logic fb;
     cells.delete(); widx = 0; ridx = 0; capture = 1;
-    lane_en = m;
+    bus_wide = (m == 4'b1111);
     // ---- yazma ----
     tx_done_seen = 0; rx_done_seen = 0;
     dir = 1; start = 1;
@@ -213,7 +219,7 @@ module tb_ultra_sd_line;
   task automatic run_status_case(input logic [2:0] sss, input bit send,
                                  input string nm);
     tx_done_seen = 0; busy_seen = 0; widx = 0; check_bytes = 0;
-    lane_en = 4'b1111; dir = 1; start = 1;
+    bus_wide = 1'b1; dir = 1; start = 1;
     wait (tx_busy); start = 0;
     wait (dat_oe != 4'b0000);
     wait (dat_oe == 4'b0000);
@@ -254,7 +260,7 @@ module tb_ultra_sd_line;
 
   initial begin
     foreach (mem[i]) mem[i] = 32'hA5C3_0F51 ^ (i * 32'h0101_1011);
-    lane_en = 4'b1111; dir = 0; start = 0; dat_in = 4'hF;
+    bus_wide = 1'b1; dir = 0; start = 0; dat_in = 4'hF;
     widx = 0; ridx = 0; errs = 0; capture = 0;
     tx_done_seen = 0; rx_done_seen = 0;
     repeat (3) @(posedge line_clk);

@@ -56,7 +56,7 @@
 module ultra_sd_top #(
   parameter int SYS_CLK_HZ     = 100_000_000, // supplied by harness
   parameter int DATA_W         = 32,          // AXIS payload width
-  parameter int RD_FIFO_BLOCKS = 2,
+  parameter int RD_FIFO_BLOCKS = 4,
   parameter int WR_FIFO_BLOCKS = 2,
   parameter int CRC_RETRIES    = 3,
   // SD clocks between the end of one command frame (or its response) and the

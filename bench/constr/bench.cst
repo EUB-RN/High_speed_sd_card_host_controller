@@ -1,0 +1,42 @@
+// ----------------------------------------------------------------------------
+// bench.cst -- the pads bench_top adds on top of the SD slot.
+//
+// Gowin reads several .cst files per project, so this one does NOT repeat the
+// slot. bench/build.tcl adds constr/ultra_sd.cst as well, and that file stays
+// the single place the SD pin map lives: a pinout that exists in two files is a
+// pinout that will disagree with itself eventually.
+//
+// Everything here is from the Tang Primer 20K Dock pinout as published in
+// Sipeed's example repository, which is the same source pin_check used and
+// verified on the board.
+// ----------------------------------------------------------------------------
+
+// ---- 27 MHz core-board crystal ---------------------------------------------
+IO_LOC  "clk27" H11;
+IO_PORT "clk27" IO_TYPE=LVCMOS33;
+
+// ---- dock LEDs -------------------------------------------------------------
+// led[3] blinking = the run finished clean. Any steady pattern is a state code;
+// see bench_core's output section. These exist so the board says something
+// before the UART pin below is confirmed.
+IO_LOC  "led[0]" L16;  IO_PORT "led[0]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "led[1]" L14;  IO_PORT "led[1]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "led[2]" N14;  IO_PORT "led[2]" IO_TYPE=LVCMOS33 DRIVE=8;
+IO_LOC  "led[3]" N16;  IO_PORT "led[3]" IO_TYPE=LVCMOS33 DRIVE=8;
+
+// ---- UART transmit, toward the dock's USB bridge ---------------------------
+//
+// CONFIRM THIS PIN BEFORE YOU TRUST A SILENT TERMINAL.
+//
+// Every other pin in this repository traces to either Table 2-2 of the
+// requirements or a pin_check run on real hardware. This one does not: the dock
+// routes a USB-serial bridge to the FPGA, but which pad carries its RX is the
+// one number not independently established here. M11 is the usual assignment in
+// the Sipeed examples for this dock revision.
+//
+// A wrong pin here is harmless and silent -- the measurement still runs and
+// led[3] still blinks, you just get no text. So: build, run, and if the terminal
+// stays empty, look up "UART" in TangPrimer-20K-example/README.md and change the
+// one line below. Do not go looking for a bug in the benchmark first.
+IO_LOC  "uart_tx" M11;
+IO_PORT "uart_tx" IO_TYPE=LVCMOS33 DRIVE=8;

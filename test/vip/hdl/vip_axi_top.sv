@@ -192,6 +192,10 @@ module vip_axi_top
     .BLOCKS           (),
     .XFER             (),
     .CFG_CLK          (),
+    // Held at the register's own reset value: this harness exercises the bus,
+    // not the init ladder, so the hardware-load path must never fire and
+    // overwrite what a test just wrote.
+    .CFG_CLK_HW       (8'hff),
     .CFG_PHY          (),
     .rd_xfer_busy     (rd_xfer_busy),
 
@@ -211,10 +215,18 @@ module vip_axi_top
 
     .sd_rd_pl_en      (sd_rd_pl_en),
     .sd_rd_pl_data    (sd_rd_pl_data),
+    // Bu VIP akis protokolunu sinar, blok spekulasyonunu degil: her kelime
+    // yazildigi gibi yayinlanir (commit surekli yukari, geri sarma yok).
+    // Blok granulerligini ultra_sd_block kullanir.
+    .sd_rd_pl_commit  (1'b1),
+    .sd_rd_pl_rewind  (1'b0),
     .sd_rd_pl_full    (sd_rd_pl_full),
+    .sd_rd_pl_block_room (),
     .sd_rd_pl_level   (),
 
     .sd_wr_pl_en      (sd_wr_pl_en),
+    .sd_wr_pl_commit  (1'b1),
+    .sd_wr_pl_rewind  (1'b0),
     .sd_wr_pl_data    (sd_wr_pl_data),
     .sd_wr_pl_last    (sd_wr_pl_last),
     .sd_wr_pl_valid   (sd_wr_pl_valid),

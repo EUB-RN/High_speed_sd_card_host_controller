@@ -12,3 +12,26 @@ obj_dir/
 sim_build/
 __pycache__/
 *.vvp
+
+# Verilated testbench objects
+test/build/
+pin_check/*
+# cocotb VIP virtual environment
+test/.venv/
+
+# SymbiYosys working directories
+test/formal/*_bmc/
+test/formal/*_prove/
+
+# A/B sentez denemesi ciktilari
+syn/yosys_out/
+
+# derlenmis yardimci araclar
+a.out
+bench/tools/uart_read
+
+# 313 MB scratch: A/B sentez denemeleri ve build kopyalari
+tmp/
+
+# Gowin build loglari
+*.log

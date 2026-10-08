@@ -18,11 +18,12 @@
 TEST_DIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 REPO_ROOT := $(abspath $(TEST_DIR)/..)
 RTL_DIR   := $(REPO_ROOT)/rtl
+BENCH_DIR := $(REPO_ROOT)/bench/rtl
 BUILD     := $(TEST_DIR)/build
 
 # Order is the order the regression runs in: cheap and narrow first, so a
 # broken divisor fails in seconds rather than after the soak.
-CATEGORIES := unit functional vip error_injection formal coverage stress performance
+CATEGORIES := unit functional integration vip error_injection formal coverage stress performance
 
 include $(TEST_DIR)/mk/common.mk
 include $(patsubst %,$(TEST_DIR)/%/tests.mk,$(CATEGORIES))
@@ -30,6 +31,11 @@ include $(patsubst %,$(TEST_DIR)/%/tests.mk,$(CATEGORIES))
 ALL_TESTS := $(foreach c,$(CATEGORIES),$($(c)_TESTS))
 
 .PHONY: all test regression list lint clean $(CATEGORIES)
+
+# Kategori tests.mk'leri include edilirken kendi hedeflerini tanimlar; include
+# edilen ilk hedef make'in dogal default goal'u olur ve `make` regresyon yerine
+# o tek hedefi kosar. Default goal'u burada acikca sabitliyoruz.
+.DEFAULT_GOAL := all
 
 all: regression
 test: regression

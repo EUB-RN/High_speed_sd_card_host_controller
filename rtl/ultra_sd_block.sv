@@ -123,6 +123,13 @@ module ultra_sd_block #(
 
   logic [LBA_W-1:0]    lba_q;
   logic [BLOCKS_W-1:0] blocks_left_q;
+  // Hatta kac blok ARM edildigini sayar. dat_start_o seviye tabanlidir ve hat
+  // bosa dustugu anda bir sonraki blogu arm eder; bu sayac olmadan SON blok
+  // alinirken de yuksek kalir ve kart hic gondermeyecegi bir blok icin hatti
+  // CELL_ARM'da asili birakir. Sayac, son blok ARM EDILIR EDILMEZ (bitmesini
+  // beklemeden) dat_start_o'yu dusurur.
+  logic [BLOCKS_W-1:0] arm_left_q;
+  logic                rx_busy_q;
   logic [BLOCKS_W-1:0] blocks_tot_q;
   logic                dir_q;
   logic                multi_q;
@@ -212,7 +219,8 @@ module ultra_sd_block #(
   assign wr_en_o   = (step_q == S_WR_DATA) && tx_take_i;
 
   assign dat_start_o = ((step_q == S_RD_ARM) && (arm_idle_q == 3'd7))
-                    || ((step_q == S_RD_DATA) && !drop_q && rd_room_ok_i)
+                    || ((step_q == S_RD_DATA) && !drop_q && rd_room_ok_i
+                        && (arm_left_q != BLOCKS_W'(0)))
                     || ((step_q == S_WR_ARM) && (arm_idle_q == 3'd7));
   assign dat_dir_o   = dir_q;
 
@@ -227,6 +235,25 @@ module ultra_sd_block #(
   assign retry_left = (retry_q < RTY_W'(CRC_RETRIES));
 
   logic rd_block_ok, rd_crc_fail, rd_tmo;
+  // Hat bir arm'i kabul etti: rx_busy'nin yukselen kenari.
+  logic rx_arm_taken;
+  assign rx_arm_taken = !dir_q && rx_busy_i && !rx_busy_q;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      rx_busy_q  <= 1'b0;
+      arm_left_q <= '0;
+    end else begin
+      rx_busy_q <= rx_busy_i;
+      // S_RD_ARM her okuma dizisinin (ve her CRC retry'sinin) basi: kalan blok
+      // sayisi arm butcesidir.
+      if (step_q == S_RD_ARM)
+        arm_left_q <= blocks_left_q;
+      else if (rx_arm_taken && (arm_left_q != BLOCKS_W'(0)))
+        arm_left_q <= arm_left_q - BLOCKS_W'(1);
+    end
+  end
+
   assign rd_block_ok = (step_q == S_RD_DATA) && rx_done_i &&  rx_crc_ok_i;
   assign rd_crc_fail = (step_q == S_RD_DATA) && rx_done_i && !rx_crc_ok_i;
   assign rd_tmo      = (step_q == S_RD_DATA) && (to_q == '0) && !rx_busy_i;
@@ -252,12 +279,35 @@ module ultra_sd_block #(
   // Kart varligi ve init tamam dinamik terimler, bu yuzden hala burada ve
   // kombinasyonel: ikisi de tek bit, yolu kisa, ve kart cikarma karari bir
   // cevrim bayatlamamali. Aritmetik olan iki terim L4'ten geliyor.
-  assign start_err = !pres_sync_q[1]    ? ERR_NO_CARD
-                   : !card_ready_i      ? ERR_CARD_STATE
-                   : start_blocks_zero_i ? ERR_PROTOCOL
-                   : start_range_bad_i   ? ERR_RANGE
-                                         : ERR_OK;
-  assign start_bad = (step_q == S_IDLE) && go_rise && (start_err != ERR_OK);
+  // L4'ten gelen iki ARITMETIK terim kaydedilir. BLOCKS ve LBA, START
+  // yazimindan en az bir AXI islemi once yaziliyor, yani go_rise onlari
+  // tukettiginde uzun suredir kararlilar -- bir cevrim bayatlamanin etkisi yok.
+  // Kazanc timing'de: kaydedilmediklerinde start_err'in dort katmanli oncelik
+  // mux'u fail_o uzerinden to_q'nun yukleme zincirine kadar tek bir
+  // kombinasyonel yol oluyordu ve bu, cekirdegin frekansla olceklenen en kotu
+  // yoluydu (-1.919 ns, 10.101 ns pencere, 83.2 MHz).
+  logic start_arg_bad_q;
+  err_e start_arg_err_q;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      start_arg_bad_q <= 1'b0;
+      start_arg_err_q <= ERR_OK;
+    end else begin
+      start_arg_bad_q <= start_blocks_zero_i || start_range_bad_i;
+      start_arg_err_q <= start_blocks_zero_i ? ERR_PROTOCOL
+                       : start_range_bad_i   ? ERR_RANGE
+                                             : ERR_OK;
+    end
+  end
+
+  // Kart varligi ve init tamam KOMBINASYONEL kalir: tek bit, yolu kisa, ve
+  // kart cikarma karari bir cevrim bayatlamamali.
+  assign start_err = !pres_sync_q[1] ? ERR_NO_CARD
+                   : !card_ready_i   ? ERR_CARD_STATE
+                                     : start_arg_err_q;
+  assign start_bad = (step_q == S_IDLE) && go_rise &&
+                     (!pres_sync_q[1] || !card_ready_i || start_arg_bad_q);
 
   assign fail_o = start_bad || cmd_fail || rd_tmo || wr_tmo || wr_proto ||
                   busy_tmo || (rd_crc_fail && !retry_left) ||

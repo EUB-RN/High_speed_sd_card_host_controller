@@ -2,7 +2,7 @@
 # written in the language of the specification rather than of the RTL. These
 # are the R-DEL-6 required scenarios.
 
-functional_TESTS := ultra_sd_line
+functional_TESTS := ultra_sd_line init_ladder_basic init_ladder_full block_requests block_flow
 
 # DAT hatti cerceveleme: yazma / okuma / CRC16 / CRC durum token'i, davranissal
 # bir kart modeline karsi.
@@ -10,13 +10,27 @@ ultra_sd_line_SRCS := $(PKG) $(RTL_DIR)/crc/ultra_sd_crc16.sv \
                       $(RTL_DIR)/ultra_sd_line.sv \
                       $(TEST_DIR)/functional/tb_ultra_sd_line.sv
 
+# Merdiven artik ultra_sd_cmd'in icinde, bu yuzden testler komut motorunu ve
+# CRC7'yi de derliyor: merdiven gercek CMD hatti uzerinden sinaniyor.
+init_ladder_basic_SRCS := $(PKG) $(RTL_DIR)/crc/ultra_sd_crc7.sv \
+                          $(RTL_DIR)/ultra_sd_cmd.sv \
+                          $(TEST_DIR)/functional/tb_init_ladder_basic.sv
+
+init_ladder_full_SRCS := $(PKG) $(RTL_DIR)/crc/ultra_sd_crc7.sv \
+                         $(RTL_DIR)/ultra_sd_cmd.sv \
+                         $(TEST_DIR)/functional/tb_init_ladder_full.sv
+
+block_requests_SRCS := $(PKG) $(RTL_DIR)/ultra_sd_block.sv \
+                       $(TEST_DIR)/functional/tb_block_requests.sv
+
+block_flow_SRCS := $(PKG) $(RTL_DIR)/ultra_sd_block.sv \
+                   $(TEST_DIR)/functional/tb_block_flow.sv
+
 # Still to write here (R-DEL-6):
-#   init_ladder        Section 6.1 / Appendix B, including the 74-clock ramp
 #   hs_switch          CMD6 High Speed switch, verified by status block read-back
 #   sdsc_reject        SDSC detected and rejected, not silently mishandled
-#   read_single        CMD17
-#   read_multi         CMD18 streaming, tlast correct on the last beat
-#   write_multi        CMD25 with ACMD23 pre-erase
+#   read_multi_payload end-to-end with the AXI FIFO and tlast
+#   write_multi_payload end-to-end with the AXI FIFO and tlast
 #   bus_width          4-bit operation (ACMD6)
 #   card_detect        active-low card detect, insert and remove mid-transfer
 #   error_recovery     recovery without full re-initialisation (R-FUNC-16)
