@@ -9,23 +9,34 @@ integration_TESTS := init_cmd_stack block_stat block_axis_read block_axis_write 
 # ultra_sd_cmd with no u_line in it at all, so until this test the two ends had
 # never been connected to each other.
 #
-# REGISTERED AND CURRENTLY RED: 11 of 151 checks fail. It arrived with 645e7db
-# and was never added to this list, so it had never reported anything. Listed
-# now because a test that does not run cannot report, and what it reports is
-# this, identically with and without LINE_CARD_WITH_PHY:
+# It arrived with 645e7db and was never added to this list, so it had never
+# reported anything. Listed now, and green -- but it was red when first run, with
+# 11 of 151 checks failing, and all three causes were in the test rather than in
+# ultra_sd_line:
 #
-#   1/5 SCR 8B 1-bit        received 0 of 2 payload words
-#   2/5 SWITCH 64B 1-bit    received 2 of 16 payload words
-#   3/5 BLOCK 512B 1-bit    passes
-#   4/5 BLOCK 512B 4-bit    received 0 of 128 payload words
-#   5/5 WRITE 512B 4-bit    byte 0 expected 5a got a5, card storage mismatch
+#   send_cmd returned four SD clocks after the command frame without waiting for
+#   the card's response, so send_acmd's second command was driven onto CMD while
+#   the card was still answering CMD55. Both ends drove a tri1, the card's own
+#   receiver saw a malformed frame, set protocol_error_o and decoded nothing.
 #
-# Not yet root-caused, and the direction matters before anyone trusts it: the
-# same 4-bit 512-byte path is green in tb_bench_flow, in tb_top_integration and
-# on hardware (MISMATCH = 0 over 64 MB), so the first thing to rule out is this
-# testbench's own bit-banged ACMD6 leaving the card model in 1-bit while u_line
-# transfers in 4-bit -- which is what both a nibble-swapped write byte and a
-# read that lands nothing would look like.
+#   do_read sent the command and armed the engine afterwards. The card starts the
+#   data frame NAC cycles after its response and does not wait, so the receiver
+#   raced it for the start bit and lost -- in 4-bit, where the frame is four
+#   times shorter in cycles. ultra_sd_block gets this right by construction:
+#   S_RD_ARM raises dat_start_o and only then S_CMD issues the read.
+#
+#   do_write advanced its source word on every tx_take, including the one
+#   ultra_sd_line raises during the start-bit cell to LOAD the first word. Every
+#   word shifted by one; the CRC16 was computed over what was really sent so the
+#   card accepted the block, and only the comparison against card storage showed
+#   it. ultra_sd_block avoids it with wr_en_o = (step_q == S_WR_DATA) && tx_take_i.
+#
+# Two of the three were masked by the first: nothing reached the 4-bit path at
+# all until the command collision was fixed.
+#
+# +lcdbg traces the card's DAT driver state against the engine's cell state,
+# +lcnib the raw nibbles of the first cycles of a frame. Both are what found the
+# above, and neither costs anything left in.
 line_card_DEFS := ULTRA_SD_NO_VENDOR_PRIM
 line_card_SRCS := $(PKG) \
                   $(RTL_DIR)/crc/ultra_sd_crc7.sv \

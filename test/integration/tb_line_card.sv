@@ -231,8 +231,41 @@ module tb_line_card;
     end
     cmd_oe  = 1'b0;
     cmd_out = 1'b1;
-    // Let the card finish decoding before the next command.
-    repeat (4) @(negedge sd_clk);
+
+    // WAIT FOR THE CARD TO FINISH ANSWERING BEFORE RETURNING.
+    //
+    // Four clocks is enough for the card to DECODE the command and nowhere near
+    // enough for it to ANSWER one. The card drives a 48-bit response starting
+    // NCR_DELAY_CYCLES after the frame, so a caller that sends another command
+    // straight away -- send_acmd is exactly that, CMD55 then the application
+    // command -- drives CMD while the card is still driving it. The net is a
+    // tri1: both ends win nothing, the card's own receiver sees a malformed
+    // frame, sets protocol_error_o, and decodes no command at all. Downstream
+    // that reads as a card which ignored an ACMD, an engine left armed for a
+    // frame that never came, and a 4-bit write coming back nibble-swapped
+    // because the ACMD6 that was supposed to widen the bus never landed.
+    //
+    // The real command engine does not have this bug: ultra_sd_cmd waits for the
+    // response and then an Ncc gap before the next frame. This task has to model
+    // that, not approximate it.
+    begin
+      int t;
+      // Give the card its Ncr to start driving. A command with no response --
+      // CMD0 -- never does, and falls through on the timeout.
+      t = 0;
+      while (!u_card.cmd_oe_q && (t < 16)) begin
+        @(negedge sd_clk); t++;
+      end
+      // Then let it finish.
+      t = 0;
+      while (u_card.cmd_oe_q && (t < 128)) begin
+        @(negedge sd_clk); t++;
+      end
+      check(t < 128, "card released CMD after its response");
+    end
+
+    // Ncc: the minimum gap between one command and the next.
+    repeat (8) @(negedge sd_clk);
   endtask
 
   // CMD55 + the application command, which is how every ACMD reaches the card.
@@ -267,6 +300,56 @@ module tb_line_card;
     endcase
   endfunction
 
+  // Per-edge trace of the two ends, off unless asked for: +lcdbg. The card's
+  // DAT driver state and the engine's cell state side by side are what place a
+  // frame that never arrives -- the card not starting, or the engine not
+  // listening, look identical from the payload counter alone.
+  int lc_card = -1, lc_cell = -1;
+  always @(posedge sd_clk_src) begin
+    if (rst_n && $test$plusargs("lcdbg") &&
+        ((int'(u_card.dat_tx_state_q) != lc_card) || (int'(u_line.cell_q) != lc_cell))) begin
+      $display("      [%0t] card_dat=%0d cell=%0d seg=%0d wide=%0b oe=%b busy=%b valid=%b done=%b crcok=%b",
+               $time, u_card.dat_tx_state_q, u_line.cell_q, u_line.seg_q,
+               bus_wide, u_card.dat_oe_q, rx_busy, rx_valid, rx_done, rx_crc_ok);
+      lc_card = int'(u_card.dat_tx_state_q);
+      lc_cell = int'(u_line.cell_q);
+    end
+  end
+
+  // Raw DAT nibbles for the first cycles of a frame: what the card drives, in
+  // its own group order, next to what lands in the engine. A frame that arrives
+  // misaligned shows the offset directly instead of through assembled words.
+  int lc_nib = 0;
+  always @(posedge sd_clk_src) begin
+    if (rst_n && $test$plusargs("lcnib") && rx_busy && (lc_nib < 24)) begin
+      $display("      [nib %0d] dat=%b group=%0d card_dat=%0d cell=%0d seg=%0d valid=%b data=%08h",
+               lc_nib, sd_dat, u_card.rd_group_q, u_card.dat_tx_state_q,
+               u_line.cell_q, u_line.seg_q, rx_valid, rx_data);
+      lc_nib <= lc_nib + 1;
+    end
+    if (!rx_busy) lc_nib <= 0;
+  end
+
+  // When the card QUEUES a read and when it finally starts driving it. A frame
+  // that arrives one command late shows up here as a queue time and a start
+  // time with a command in between.
+  logic lc_q_d;
+  always @(posedge sd_clk_src) begin
+    if (!rst_n) lc_q_d <= 1'b0;
+    else begin
+      lc_q_d <= u_card.read_queued_q;
+      if ($test$plusargs("lcdbg")) begin
+        if (u_card.read_queued_q && !lc_q_d)
+          $display("      [%0t] QUEUE  kind=%0d len=%0d lba=%0d  resp_pend=%b cmd_oe=%b",
+                   $time, u_card.read_kind_q, u_card.read_length_q,
+                   u_card.read_lba_q, u_card.resp_pending_q, u_card.cmd_oe_q);
+        if (!u_card.read_queued_q && lc_q_d)
+          $display("      [%0t] START  kind=%0d len=%0d",
+                   $time, u_card.rd_kind_active_q, u_card.rd_length_active_q);
+      end
+    end
+  end
+
   // ===========================================================================
   // One read frame, checked word by word
   //
@@ -274,11 +357,22 @@ module tb_line_card;
   // first word. Getting that backwards would look exactly like a corrupted card,
   // which is why it is spelled out rather than assumed.
   // ===========================================================================
+  // ARM FIRST, THEN COMMAND. ultra_sd_block does it in this order and has to:
+  // S_RD_ARM raises dat_start_o and only then S_CMD issues the read, because the
+  // card begins driving the data frame NAC cycles after its response and will
+  // not wait for a receiver that is not listening yet. A test that sends the
+  // command first and arms afterwards races the card for the start bit -- and
+  // loses it in 4-bit, where the frame is four times shorter in cycles.
+  //
+  // So the command is issued HERE rather than by the caller.
   task automatic do_read(input string      name,
                          input int         kind,
                          input int         lba,
                          input int         nbytes,
-                         input logic [3:0] lanes);
+                         input logic [3:0] lanes,
+                         input logic [5:0] index,
+                         input logic [31:0] argument,
+                         input bit          as_acmd);
     int          words;
     int          got;
     int          timeout;
@@ -301,6 +395,10 @@ module tb_line_card;
     end
     check(timeout < 64, $sformatf("%s: engine accepted the read request", name));
     start = 1'b0;
+
+    // Listening now, so ask for the data.
+    if (as_acmd) send_acmd(index, argument);
+    else         send_cmd (index, argument);
 
     // Collect the payload. The frame is bounded, so a word that never arrives is
     // a hang rather than a wrong value, and the timeout has to be generous
@@ -352,6 +450,7 @@ module tb_line_card;
     int   timeout;
     int   words;
     logic byte_ok;
+    logic load_seen;
 
     words  = nbytes / 4;
     wr_idx = 0;
@@ -367,9 +466,27 @@ module tb_line_card;
     @(negedge line_clk);
     start = 1'b1;
     timeout = 0;
+    load_seen = 1'b0;
     while (!tx_done && (timeout < 20 * nbytes + 4000)) begin
       @(negedge line_clk);
-      if (tx_take && (wr_idx < words - 1)) wr_idx++;
+      // THE FIRST TAKE IS A LOAD, NOT A CONSUME.
+      //
+      // ultra_sd_line raises tx_take_o during CELL_ARM as well -- the start-bit
+      // cell -- and uses it to latch the FIRST word into the shifter
+      // (tx_sh_q <= word_swizzle(tx_data_i)). So that take must not advance the
+      // source, or word 0 is replaced by word 1 before it is ever sent.
+      //
+      // ultra_sd_block does not have this problem because it gates on the state:
+      // wr_en_o = (step_q == S_WR_DATA) && tx_take_i, and the arm-cell take
+      // arrives while it is still in S_WR_ARM. This task has to make the same
+      // distinction, and the symptom when it does not is subtle -- every word
+      // shifts by one, the CRC16 the card checks is computed over what was
+      // actually sent so the card ACCEPTS the block, and only a comparison
+      // against the card's storage shows it.
+      if (tx_take) begin
+        if (!load_seen) load_seen = 1'b1;
+        else if (wr_idx < words - 1) wr_idx++;
+      end
       timeout++;
       if (timeout == 8) start = 1'b0;
     end
@@ -429,23 +546,25 @@ module tb_line_card;
     // ACMD6, so the bus really is 1 bit wide at this point -- that is not a
     // simplification of the test, it is the order the specification mandates.
     $display("-- 1/5 ACMD51: 8-byte SCR read, 1-bit --");
-    send_acmd(ACMD51_SEND_SCR, 32'h0);
-    do_read("SCR 8B 1-bit", KIND_SCR, 0, 8, 4'b0001);
+    do_read("SCR 8B 1-bit", KIND_SCR, 0, 8, 4'b0001,
+            ACMD51_SEND_SCR, 32'h0, 1'b1);
 
     $display("-- 2/5 CMD6: 64-byte switch status, 1-bit --");
-    send_cmd(CMD6_SWITCH_FUNC, 32'h8000_0001);
-    do_read("SWITCH 64B 1-bit", KIND_SWITCH, 0, 64, 4'b0001);
+    do_read("SWITCH 64B 1-bit", KIND_SWITCH, 0, 64, 4'b0001,
+            CMD6_SWITCH_FUNC, 32'h8000_0001, 1'b0);
 
     // ---- a full block, still 1-bit ----------------------------------------
     $display("-- 3/5 CMD17: 512-byte block read, 1-bit --");
-    send_cmd(CMD17_READ_SINGLE_BLOCK, 32'd2);
-    do_read("BLOCK 512B 1-bit", KIND_STORAGE, 2, BLOCK_BYTES, 4'b0001);
+    do_read("BLOCK 512B 1-bit", KIND_STORAGE, 2, BLOCK_BYTES, 4'b0001,
+            CMD17_READ_SINGLE_BLOCK, 32'd2, 1'b0);
 
     // ---- widen the bus and do it again ------------------------------------
     $display("-- 4/5 ACMD6 then CMD17: 512-byte block read, 4-bit --");
+    // ACMD6 widens the card; it carries no data frame, so it stays a plain
+    // command and is not subject to the arm-first rule.
     send_acmd(ACMD6_SET_BUS_WIDTH, 32'h0000_0002);
-    send_cmd(CMD17_READ_SINGLE_BLOCK, 32'd3);
-    do_read("BLOCK 512B 4-bit", KIND_STORAGE, 3, BLOCK_BYTES, 4'b1111);
+    do_read("BLOCK 512B 4-bit", KIND_STORAGE, 3, BLOCK_BYTES, 4'b1111,
+            CMD17_READ_SINGLE_BLOCK, 32'd3, 1'b0);
 
     // ---- and a write, which also exercises the CRC status token -----------
     $display("-- 5/5 CMD24: 512-byte block write, 4-bit --");
