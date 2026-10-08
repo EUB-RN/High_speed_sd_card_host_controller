@@ -2,7 +2,7 @@
 # behavioural code stands in only for the SD card or host outside the core.
 
 integration_TESTS := init_cmd_stack block_stat block_axis_read block_axis_write \
-                     line_card top_integration bench_flow
+                     line_card top_integration bench_flow bench_timing
 
 # The seam between u_line and the card model: tb_ultra_sd_line drives u_line from
 # stimulus written beside it, tb_sd_card_model drives the card from a real
@@ -105,3 +105,9 @@ bench_flow_SRCS := $(PKG) \
                    $(BENCH_DIR)/bench_core.sv \
                    $(TEST_DIR)/common/models/sd_card_model.sv \
                    $(TEST_DIR)/integration/tb_bench_flow.sv
+
+# The phase margin matrix (bench_core SUITE = 1) against the same card model.
+# Same sources as bench_flow minus the debug port, which the matrix does not read.
+bench_timing_DEFS := ULTRA_SD_NO_VENDOR_PRIM
+bench_timing_SRCS := $(filter-out $(TEST_DIR)/integration/tb_bench_flow.sv,$(bench_flow_SRCS)) \
+                     $(TEST_DIR)/integration/tb_bench_timing.sv
