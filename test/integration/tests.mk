@@ -147,6 +147,34 @@ bench_edge_DEFS := ULTRA_SD_NO_VENDOR_PRIM
 bench_edge_SRCS := $(filter-out $(TEST_DIR)/integration/tb_bench_flow.sv,$(bench_flow_SRCS)) \
                    $(TEST_DIR)/integration/tb_bench_edge.sv
 
+# WHAT THE DRAFTS HAVE FOUND SO FAR, and it looks like one cause under two
+# symptoms:
+#
+#   bench_ctrl stalls on case 2. The probe (+ctdbg) catches both ends at the
+#   moment it happens: ultra_sd_block has walked S_IDLE -> S_PRE_ERASE -> S_CMD
+#   -> S_WR_ARM -> S_WR_DATA for the NEXT case while the card is still driving
+#   D_RD_DATA -> D_RD_CRC -> D_RD_END with oe = 1111 -- the tail of the read
+#   case 1 aborted. Two drivers, one bus.
+#
+#   The card is not at fault. CMD12 stops transmission AFTER the block in
+#   flight, which is what the specification says and what the model does: it
+#   clears multi_read_q and read_queued_q and lets dat_tx_state_q finish.
+#
+#   The host is the one that moves early. S_STOP -> S_BUSY -> S_DONE, and
+#   S_BUSY only waits on card_busy_i, which ultra_sd_line only makes meaningful
+#   while its cell is idle. With the card mid-frame it reads zero, so DONE is
+#   reported while DAT is still busy and the next transfer starts into it.
+#
+#   That is very likely bench_edge's failure too: there the multi-block reads
+#   end normally rather than by abort, but the end of a multi-block transfer
+#   takes the same path. It would also explain why bench_soak passes -- its
+#   pairs are identical and short -- and why none of this shows on hardware,
+#   where the next command's own latency is longer than any card's tail.
+#
+#   CANDIDATE FIX, not yet applied: S_BUSY should also wait for !dat_active_i.
+#   ultra_sd_block already has that signal; it uses it for the gap counter. It
+#   is a change to the delivered core, so it gets measured before it is kept.
+#
 # The three bench suites that are written but not yet trusted. They run with
 # `make bench_edge` / `make bench_ctrl` / `make bench_soak`; see the note above
 # bench_edge for what they have already established and what is still open.

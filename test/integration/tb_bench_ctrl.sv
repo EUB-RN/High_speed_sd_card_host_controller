@@ -203,6 +203,27 @@ module tb_bench_ctrl;
   int   all_seen, v, base;
   string gname;
 
+  // Where both ends are when a case stops making progress. +ctdbg. This is the
+  // probe that placed tb_line_card's three bugs: the core's block-layer state
+  // next to the card's DAT driver state, printed on change, says whether the
+  // host is waiting for a card that already finished or the other way round.
+  int lc_blk = -1, lc_cdat = -1, lc_cell = -1;
+  always @(posedge clk) begin
+    if (rst_n && $test$plusargs("ctdbg") &&
+        ((int'(u_sd.u_block.step_q)   != lc_blk)  ||
+         (int'(u_card.dat_tx_state_q) != lc_cdat) ||
+         (int'(u_sd.u_line.cell_q)    != lc_cell))) begin
+      $display("      [%0t] blk=%0d card_dat=%0d cell=%0d cphase=%0d busy=%b oe=%b xst=%0d beats=%0d",
+               $time, u_sd.u_block.step_q, u_card.dat_tx_state_q,
+               u_sd.u_line.cell_q, u_sd.u_block.cphase_q,
+               u_sd.u_line.card_busy_o, u_card.dat_oe_q,
+               u_bench.xst_q, u_bench.beats_left_q);
+      lc_blk  = int'(u_sd.u_block.step_q);
+      lc_cdat = int'(u_card.dat_tx_state_q);
+      lc_cell = int'(u_sd.u_line.cell_q);
+    end
+  end
+
   // Progress trace: +tmdbg prints every sequencer transition with its time, so a
   // run that goes long says WHERE it went long instead of just timing out.
   int   last_sst = -1;
