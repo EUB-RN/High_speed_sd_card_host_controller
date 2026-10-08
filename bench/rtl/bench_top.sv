@@ -71,10 +71,13 @@ module bench_top #(
   // compiles the added files as one unit, so a `define there reaches this
   // default -- the same mechanism that turns ULTRA_SD_DEBUG_PORT on.
 `ifdef BENCH_SUITE
-  parameter int SUITE       = `BENCH_SUITE
+  parameter int SUITE       = `BENCH_SUITE,
 `else
-  parameter int SUITE       = 0
+  parameter int SUITE       = 0,
 `endif
+
+  // Payload per SUITE_EDGE case that is not a shape case.
+  parameter int EDGE_BLOCKS = 4
 ) (
   input  logic       clk27,      // 27 MHz board oscillator
 
@@ -260,6 +263,7 @@ module bench_top #(
     .TEST_BLOCKS       (TEST_BLOCKS),
     .RUNS              (RUNS),
     .SUITE             (SUITE),
+    .EDGE_BLOCKS       (EDGE_BLOCKS),
     .UART_CLKS_PER_BIT (UART_CLKS_PER_BIT)
   ) u_bench (
     .clk         (clk),

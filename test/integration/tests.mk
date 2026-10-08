@@ -122,3 +122,27 @@ bench_flow_SRCS := $(PKG) \
 bench_timing_DEFS := ULTRA_SD_NO_VENDOR_PRIM
 bench_timing_SRCS := $(filter-out $(TEST_DIR)/integration/tb_bench_flow.sv,$(bench_flow_SRCS)) \
                      $(TEST_DIR)/integration/tb_bench_timing.sv
+
+# The edge-case suite (bench_core SUITE = 2): transfer shapes, payload patterns,
+# arguments that must be refused, and boundaries.
+#
+# NOT IN integration_TESTS YET, and deliberately: it currently reports 9 of 34
+# checks failing and the cause is not yet known. What it HAS established:
+#
+#   SHAPE 0..4   pass. 1, 2, 3, 7 and 4 blocks all transfer and verify.
+#   NEG  10..14  pass, with the exact codes: ERR_PROTOCOL (0x0C) for blocks = 0
+#                in both directions, ERR_RANGE (0x0A) for all three ways of
+#                running off the end. The refusal path is correct.
+#   PATRN 5..9   fail -- but NOT because of the patterns. Running all twenty
+#                cases on the LFSR alone reproduces the identical five failures,
+#                and case 18 is parameter-for-parameter identical to case 4,
+#                which passes. The failure follows POSITION, not content: every
+#                case from the eleventh transfer on misbehaves.
+#
+# So there is a real finding here, it just is not the one the group names
+# suggest. Root-cause it before listing the suite; a red regression that nobody
+# can act on is worse than a suite that is honest about not being ready.
+# Run it with: make bench_edge
+bench_edge_DEFS := ULTRA_SD_NO_VENDOR_PRIM
+bench_edge_SRCS := $(filter-out $(TEST_DIR)/integration/tb_bench_flow.sv,$(bench_flow_SRCS)) \
+                   $(TEST_DIR)/integration/tb_bench_edge.sv

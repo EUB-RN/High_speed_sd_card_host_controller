@@ -111,7 +111,12 @@ module bench_core
   // Highest phase the matrix tries. SAMPLE_PHASE is 4 bits (CFG_PHY_PHASE_W),
   // and at divisor d only d/2 phases are distinct -- at divisor 2 there are two
   // and the rest alias onto them, which is itself visible in the mask.
-  parameter int TIMING_PHASE_MAX = 15
+  parameter int TIMING_PHASE_MAX = 15,
+
+  // Payload per SUITE_EDGE case that is not itself a shape case. Small: these
+  // cases are about SHAPE and CONTENT, not volume -- a pattern that breaks the
+  // datapath breaks it in the first block.
+  parameter int EDGE_BLOCKS   = 4
 ) (
   input  logic        clk,
   input  logic        rst_n,
@@ -175,6 +180,30 @@ module bench_core
 
   localparam int SUITE_TIER      = 0;
   localparam int SUITE_TIMING    = 1;
+  localparam int SUITE_EDGE      = 2;
+
+  // ---- SUITE_EDGE: payload patterns ----------------------------------------
+  // The LFSR is the right generator for a 64 MB run and the wrong one for
+  // finding a stuck datapath: every word differs from every other, so a lane
+  // that is stuck, swapped or skewed shows up as noise and cannot be told from
+  // any other corruption. These patterns each fail in a way that names itself.
+  //
+  //   ZERO  CRC16 of an all-zero block is zero, so a CRC path that is stuck at
+  //         zero PASSES this one and fails every other: it is the control.
+  //   ONES  the opposite rail, and the one that holds every lane high through
+  //         a whole block.
+  //   AA55  alternating bits within a word and between words.
+  //   WALK  one bit set, walking: a lane that is shorted to its neighbour puts
+  //         the bit in two places and a lane that is stuck loses it entirely.
+  //   SSO   all lanes switch together on every beat, which is the worst case
+  //         for simultaneous-switching noise and for a sampling phase that is
+  //         near its edge.
+  localparam int PAT_LFSR = 0;
+  localparam int PAT_ZERO = 1;
+  localparam int PAT_ONES = 2;
+  localparam int PAT_AA55 = 3;
+  localparam int PAT_WALK = 4;
+  localparam int PAT_SSO  = 5;
 
   // R-FUNC-7 allows 500 ms for init, so wait 750 before calling the card dead.
   // R-FUNC-7 puts the init budget at 500 ms, and 750 ms used to be this
@@ -338,7 +367,45 @@ module bench_core
   assign x_streaming = (xst_q == X_RUN);
 
   assign wr_tvalid_o = x_streaming &&  x_dir && (beats_left_q != '0);
-  assign wr_tdata_o  = wr_expect;
+  // One function for both directions, so a pattern cannot be written one way and
+  // expected another -- that mistake looks exactly like a card fault.
+  function automatic logic [31:0] pat_word(input int pat,
+                                           input logic [31:0] beat,
+                                           input logic [31:0] lfsr);
+    case (pat)
+      PAT_ZERO: pat_word = 32'h0000_0000;
+      PAT_ONES: pat_word = 32'hFFFF_FFFF;
+      PAT_AA55: pat_word = beat[0] ? 32'h5555_5555 : 32'hAAAA_AAAA;
+      PAT_WALK: pat_word = 32'h1 << beat[4:0];
+      PAT_SSO:  pat_word = beat[0] ? 32'h0000_0000 : 32'hFFFF_FFFF;
+      default:  pat_word = lfsr;
+    endcase
+  endfunction
+
+  // Driven by the case table, not a register: the pattern has to be right on the
+  // very first beat, and a register written in the state before the start is one
+  // more ordering rule to get wrong.
+  logic [2:0]  pat_q;
+  logic [31:0] wr_beat_q, rd_beat_q;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      wr_beat_q <= '0;
+      rd_beat_q <= '0;
+    end else if (lfsr_reload) begin
+      wr_beat_q <= '0;
+      rd_beat_q <= '0;
+    end else begin
+      if (wr_step) wr_beat_q <= wr_beat_q + 32'd1;
+      if (rd_step) rd_beat_q <= rd_beat_q + 32'd1;
+    end
+  end
+
+  logic [31:0] wr_word, rd_word;
+  assign wr_word = pat_word(int'(pat_q), wr_beat_q, wr_expect);
+  assign rd_word = pat_word(int'(pat_q), rd_beat_q, rd_expect);
+
+  assign wr_tdata_o  = wr_word;
   assign wr_tlast_o  = wr_tvalid_o && (beats_left_q == 32'd1);
   // Do not consume committed FIFO data while the START write response is still
   // returning.  Those beats belong to this request but X_RUN has not loaded
@@ -425,7 +492,7 @@ module bench_core
               ttf_q      <= el_sys_q;
               ttf_seen_q <= 1'b1;
             end
-            if (rd_step && (rd_tdata_i != rd_expect)) mism_q <= mism_q + 32'd1;
+            if (rd_step && (rd_tdata_i != rd_word)) mism_q <= mism_q + 32'd1;
             // tlast must be high on exactly the beat the bench knows is last.
             if (rd_step && (rd_tlast_i != (beats_left_q == 32'd1)))
               tlast_err_q <= tlast_err_q + 32'd1;
@@ -540,7 +607,12 @@ module bench_core
     S_TM_SET,
     S_TM_WR,
     S_TM_RD,
-    S_TM_NEXT
+    S_TM_NEXT,
+    // SUITE_EDGE: kur, yaz, dogrulayarak oku, sonraki vaka.
+    S_EG_SET,
+    S_EG_WR,
+    S_EG_RD,
+    S_EG_NEXT
   } sstate_e;
 
   sstate_e     sst_q;
@@ -572,6 +644,79 @@ module bench_core
   // left it at. Forcing 1-bit here would desynchronise the two and fail every
   // cell for a reason that has nothing to do with timing.
   logic [15:0] tm_mask_q [NDIV];
+
+  // ---- SUITE_EDGE: the case table -----------------------------------------
+  // Twenty cases in four named groups of five, which is exactly the shape the
+  // report already has: four per-divisor columns of NDIV rows.
+  //
+  // EVERY WRITE STAYS INSIDE THE REGION THE TIER RUN ALREADY OVERWRITES,
+  // [LBA_BASE, LBA_BASE + EDGE_BLOCKS]. The boundary cases that would otherwise
+  // want the first or the last sector are READS: sector 0 carries the partition
+  // table and the last sector is as likely to be someone's data, and a bench
+  // that quietly destroys either is not a bench anyone runs twice.
+  localparam int EDGE_CASES = 4 * NDIV;
+
+  logic [4:0]  eg_case_q;
+  logic [31:0] eg_stat_q [EDGE_CASES];   // {8'h0, err, mism saturated, ok}
+
+  logic [23:0] eg_blocks;
+  logic [31:0] eg_lba;
+  logic [7:0]  eg_err_exp;
+  logic        eg_verify;    // compare the read-back against the generator
+  logic        eg_rdonly;    // no write first: the content is not ours
+
+  always_comb begin
+    // Defaults: a verified write + read-back of EDGE_BLOCKS at the base.
+    pat_q      = 3'(PAT_LFSR);
+    eg_blocks  = 24'(EDGE_BLOCKS);
+    eg_lba     = 32'(LBA_BASE);
+    eg_err_exp = 8'(ERR_OK);
+    eg_verify  = 1'b1;
+    eg_rdonly  = 1'b0;
+
+    case (eg_case_q)
+      // ---- group 0: transfer shape ---------------------------------------
+      // One block is CMD17/CMD24 and no CMD12; two is the shortest multi-block;
+      // three and seven are odd counts, which is where an off-by-one in the
+      // block counter or the FIFO's block-granular commit shows up.
+      5'd0:  eg_blocks = 24'd1;
+      5'd1:  eg_blocks = 24'd2;
+      5'd2:  eg_blocks = 24'd3;
+      5'd3:  eg_blocks = 24'd7;
+      5'd4:  eg_blocks = 24'(EDGE_BLOCKS);
+
+      // ---- group 1: payload pattern ---------------------------------------
+      5'd5:  pat_q = 3'(PAT_ZERO);
+      5'd6:  pat_q = 3'(PAT_ONES);
+      5'd7:  pat_q = 3'(PAT_AA55);
+      5'd8:  pat_q = 3'(PAT_WALK);
+      5'd9:  pat_q = 3'(PAT_SSO);
+
+      // ---- group 2: arguments that must be REFUSED -------------------------
+      // The core checks these before it issues anything (ultra_sd_block's
+      // start_arg_err_q), so the right answer is a specific error code and no
+      // bus activity at all -- not a transfer that fails later.
+      5'd10: begin eg_blocks = 24'd0; eg_err_exp = 8'(ERR_PROTOCOL); eg_verify = 1'b0; end
+      5'd11: begin eg_lba = cardblk_q - 32'd1; eg_blocks = 24'd2;
+                   eg_err_exp = 8'(ERR_RANGE); eg_verify = 1'b0; end
+      5'd12: begin eg_lba = cardblk_q; eg_blocks = 24'd1;
+                   eg_err_exp = 8'(ERR_RANGE); eg_verify = 1'b0; end
+      5'd13: begin eg_lba = cardblk_q + 32'd16; eg_blocks = 24'd1;
+                   eg_err_exp = 8'(ERR_RANGE); eg_verify = 1'b0; end
+      5'd14: begin eg_blocks = 24'd0; eg_err_exp = 8'(ERR_PROTOCOL);
+                   eg_verify = 1'b0; eg_rdonly = 1'b1; end
+
+      // ---- group 3: boundaries, and getting back to work -------------------
+      5'd15: begin eg_lba = cardblk_q - 32'd1; eg_blocks = 24'd1;
+                   eg_verify = 1'b0; eg_rdonly = 1'b1; end   // last sector, read only
+      5'd16: begin eg_blocks = 24'd1; eg_verify = 1'b0; eg_rdonly = 1'b1; end
+      5'd17: begin eg_lba = 32'(LBA_BASE) + 32'(EDGE_BLOCKS); eg_blocks = 24'd1; end
+      // After four refusals in a row: the refusals must leave nothing behind.
+      5'd18: ;
+      5'd19: pat_q = 3'(PAT_SSO);
+      default: ;
+    endcase
+  end
 
   // Widest run of set bits in a mask, and the phase at its centre -- the phase
   // a driver should pick, as far from either edge of the window as it gets.
@@ -803,26 +948,39 @@ module bench_core
         //   TM_MASK  bit p set = phase p carried a verified write + read-back
         //   TM_WIN   widest run of set bits: the margin, in phases
         //   TM_BEST  phase at the centre of that run, 255 = nothing worked
+        // SUITE_EDGE packs each case into one word: {8'h0, error code,
+        // mismatched beats saturated at 255, 1 = the case behaved as specified}.
+        // The four columns are the four groups of the case table, in order.
         if (int'(rep_idx) < FIELD_BASE + NDIV) begin
           ch_row    = int'(rep_idx) - FIELD_BASE;
-          rep_label = (SUITE == SUITE_TIMING) ? "TM_DIV  " : "CH_DIV  ";
-          rep_value = 32'(DIV_TABLE[ch_row*8 +: 8]);
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_DIV  "
+                    : (SUITE == SUITE_EDGE)   ? "EG_SHAPE" : "CH_DIV  ";
+          rep_value = (SUITE == SUITE_EDGE) ? eg_stat_q[ch_row]
+                                            : 32'(DIV_TABLE[ch_row*8 +: 8]);
         end else if (int'(rep_idx) < FIELD_BASE + 2 * NDIV) begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + NDIV);
-          rep_label = (SUITE == SUITE_TIMING) ? "TM_MASK " : "CH_RDx10";
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_MASK "
+                    : (SUITE == SUITE_EDGE)   ? "EG_PATRN" : "CH_RDx10";
           rep_value = (SUITE == SUITE_TIMING) ? 32'(tm_mask_q[ch_row])
+                    : (SUITE == SUITE_EDGE)   ? eg_stat_q[NDIV + ch_row]
                                               : char_rd_mbps_q[ch_row];
         end else if (int'(rep_idx) < FIELD_BASE + 3 * NDIV) begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + 2 * NDIV);
-          rep_label = (SUITE == SUITE_TIMING) ? "TM_WIN  " : "CH_WRx10";
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_WIN  "
+                    : (SUITE == SUITE_EDGE)   ? "EG_NEG  " : "CH_WRx10";
           rep_value = (SUITE == SUITE_TIMING)
                         ? 32'(tm_window(tm_mask_q[ch_row]))
+                    : (SUITE == SUITE_EDGE)
+                        ? eg_stat_q[2*NDIV + ch_row]
                         : char_wr_mbps_q[ch_row];
         end else begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + 3 * NDIV);
-          rep_label = (SUITE == SUITE_TIMING) ? "TM_BEST " : "CH_GAP  ";
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_BEST "
+                    : (SUITE == SUITE_EDGE)   ? "EG_BOUND" : "CH_GAP  ";
           rep_value = (SUITE == SUITE_TIMING)
                         ? 32'(tm_best_phase(tm_mask_q[ch_row]))
+                    : (SUITE == SUITE_EDGE)
+                        ? eg_stat_q[3*NDIV + ch_row]
                         : char_gap_q[ch_row];
         end
       end
@@ -1176,6 +1334,8 @@ module bench_core
         char_wr_mbps_q[i] <= '0;
         tm_mask_q[i]      <= '0;
       end
+      eg_case_q <= '0;
+      for (int i = 0; i < EDGE_CASES; i++) eg_stat_q[i] <= '0;
     end else begin
       x_start   <= 1'b0;
       rep_start <= 1'b0;
@@ -1224,7 +1384,9 @@ module bench_core
               phase_q    <= '0;
               cfg_step_q <= '0;
               div_idx_q  <= '0;
-              sst_q      <= (SUITE == SUITE_TIMING) ? S_TM_SET : S_SET_CFG;
+              sst_q      <= (SUITE == SUITE_TIMING) ? S_TM_SET
+                          : (SUITE == SUITE_EDGE)   ? S_EG_SET
+                                                    : S_SET_CFG;
             end
           end
         end
@@ -1519,6 +1681,61 @@ module bench_core
           end else begin
             // No S_CALC: the matrix needs no division, and the window
             // arithmetic is combinational off the mask in the report mux.
+            rep_start <= 1'b1;
+            sst_q     <= S_REPORT;
+          end
+        end
+
+        // ---- SUITE_EDGE: one case at a time --------------------------------
+        S_EG_SET: begin
+          x_lba    <= eg_lba;
+          x_blocks <= eg_blocks;
+          x_dir    <= !eg_rdonly;
+          x_start  <= 1'b1;
+          sst_q    <= eg_rdonly ? S_EG_RD : S_EG_WR;
+        end
+
+        S_EG_WR: begin
+          if (x_done) begin
+            // A case that expects a refusal is finished here: the point is that
+            // the core said no before it issued anything, so there is nothing to
+            // read back. A case that expected to work and did not is finished
+            // here too, with the error it actually gave.
+            if ((eg_err_exp != 8'(ERR_OK)) ||
+                (s_err_q[ERR_LSB +: 8] != 8'(ERR_OK))) begin
+              eg_stat_q[int'(eg_case_q)] <=
+                {8'h0, s_err_q[ERR_LSB +: 8], 8'h0,
+                 8'((s_err_q[ERR_LSB +: 8] == eg_err_exp) ? 1 : 0)};
+              sst_q <= S_EG_NEXT;
+            end else begin
+              x_lba    <= eg_lba;
+              x_blocks <= eg_blocks;
+              x_dir    <= 1'b0;
+              x_start  <= 1'b1;
+              sst_q    <= S_EG_RD;
+            end
+          end
+        end
+
+        S_EG_RD: begin
+          if (x_done) begin
+            eg_stat_q[int'(eg_case_q)] <=
+              {8'h0, s_err_q[ERR_LSB +: 8],
+               (mism_q > 32'd255) ? 8'hFF : 8'(mism_q),
+               8'(((s_err_q[ERR_LSB +: 8] == eg_err_exp) &&
+                   (!eg_verify || (mism_q == 32'd0))) ? 1 : 0)};
+            // Only a case that was asked to verify contributes to MISMATCH; a
+            // read of a sector we never wrote is not ours to compare.
+            if (eg_verify) mism_total_q <= mism_total_q + mism_q;
+            sst_q        <= S_EG_NEXT;
+          end
+        end
+
+        S_EG_NEXT: begin
+          if (eg_case_q != 5'(EDGE_CASES - 1)) begin
+            eg_case_q <= eg_case_q + 5'd1;
+            sst_q     <= S_EG_SET;
+          end else begin
             rep_start <= 1'b1;
             sst_q     <= S_REPORT;
           end
