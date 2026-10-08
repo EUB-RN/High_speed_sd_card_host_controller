@@ -146,3 +146,16 @@ bench_timing_SRCS := $(filter-out $(TEST_DIR)/integration/tb_bench_flow.sv,$(ben
 bench_edge_DEFS := ULTRA_SD_NO_VENDOR_PRIM
 bench_edge_SRCS := $(filter-out $(TEST_DIR)/integration/tb_bench_flow.sv,$(bench_flow_SRCS)) \
                    $(TEST_DIR)/integration/tb_bench_edge.sv
+
+# The three bench suites that are written but not yet trusted. They run with
+# `make bench_edge` / `make bench_ctrl` / `make bench_soak`; see the note above
+# bench_edge for what they have already established and what is still open.
+integration_DRAFTS := bench_edge bench_ctrl bench_soak
+
+bench_ctrl_DEFS := ULTRA_SD_NO_VENDOR_PRIM
+bench_ctrl_SRCS := $(filter-out $(TEST_DIR)/integration/tb_bench_flow.sv,$(bench_flow_SRCS)) \
+                   $(TEST_DIR)/integration/tb_bench_ctrl.sv
+
+bench_soak_DEFS := ULTRA_SD_NO_VENDOR_PRIM
+bench_soak_SRCS := $(filter-out $(TEST_DIR)/integration/tb_bench_flow.sv,$(bench_flow_SRCS)) \
+                   $(TEST_DIR)/integration/tb_bench_soak.sv

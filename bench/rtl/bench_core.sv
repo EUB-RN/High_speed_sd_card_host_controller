@@ -116,7 +116,16 @@ module bench_core
   // Payload per SUITE_EDGE case that is not itself a shape case. Small: these
   // cases are about SHAPE and CONTENT, not volume -- a pattern that breaks the
   // datapath breaks it in the first block.
-  parameter int EDGE_BLOCKS   = 4
+  parameter int EDGE_BLOCKS   = 4,
+
+  // SUITE_CTRL: payload per case. Long enough that there is a middle to
+  // interrupt -- an abort that lands after the last beat tests nothing.
+  parameter int CTRL_BLOCKS   = 8,
+
+  // SUITE_SOAK: how many verified write/read pairs, and how big. R-MEAS-5 wants
+  // a 30-minute run on the board; in simulation this is a handful.
+  parameter int SOAK_ITERS    = 64,
+  parameter int SOAK_BLOCKS   = 8
 ) (
   input  logic        clk,
   input  logic        rst_n,
@@ -181,6 +190,8 @@ module bench_core
   localparam int SUITE_TIER      = 0;
   localparam int SUITE_TIMING    = 1;
   localparam int SUITE_EDGE      = 2;
+  localparam int SUITE_CTRL      = 3;
+  localparam int SUITE_SOAK      = 4;
 
   // ---- SUITE_EDGE: payload patterns ----------------------------------------
   // The LFSR is the right generator for a 64 MB run and the wrong one for
@@ -612,7 +623,12 @@ module bench_core
     S_EG_SET,
     S_EG_WR,
     S_EG_RD,
-    S_EG_NEXT
+    S_EG_WAIT,
+    S_EG_NEXT,
+    // SUITE_SOAK: ayni cifti tekrar tekrar, sayac capraz kontroluyle.
+    S_SK_WR,
+    S_SK_RD,
+    S_SK_NEXT
   } sstate_e;
 
   sstate_e     sst_q;
@@ -645,6 +661,31 @@ module bench_core
   // cell for a reason that has nothing to do with timing.
   logic [15:0] tm_mask_q [NDIV];
 
+  // ---- SUITE_CTRL: interrupting a transfer in flight ------------------------
+  // ct_arm_q says a poke is wanted and at which point; the x_ engine fires it
+  // when the stream reaches that point and clears it when the write is answered.
+  logic        ct_arm_q, ct_req_q;
+  logic [31:0] ct_at_q, ct_wdata_q;
+
+  // ---- SUITE_SOAK: the same pair, over and over -----------------------------
+  // Throughput is not the question here; drift is. A card that passes once and a
+  // card that passes ten thousand times are the same number on the tier run, and
+  // that difference is the whole of R-MEAS-5. Five checkpoints along the way, so
+  // the report shows WHEN something started going wrong rather than only that it
+  // did.
+  //
+  // SK_XCHK is the R-IF-11 cross-check: the bench counts SD cycles itself, off
+  // the pad, while the core counts payload cycles in its own clock domain. Their
+  // difference is the non-payload time, which the core reports separately as
+  // STAT_GAP. If those two disagree, one of the counters is on the wrong clock
+  // and every efficiency figure in the tier report is wrong with it.
+  logic [31:0] sk_iter_q, sk_mism_q, sk_retry_q;
+  logic [2:0]  sk_ck_q;
+  logic [31:0] sk_iter_a  [NDIV];
+  logic [31:0] sk_mism_a  [NDIV];
+  logic [31:0] sk_retry_a [NDIV];
+  logic [31:0] sk_xchk_a  [NDIV];
+
   // ---- SUITE_EDGE: the case table -----------------------------------------
   // Twenty cases in four named groups of five, which is exactly the shape the
   // report already has: four per-divisor columns of NDIV rows.
@@ -664,8 +705,16 @@ module bench_core
   logic [7:0]  eg_err_exp;
   logic        eg_verify;    // compare the read-back against the generator
   logic        eg_rdonly;    // no write first: the content is not ours
+  logic        eg_poke;      // SUITE_CTRL: interrupt this transfer
+  logic [31:0] eg_poke_at;   // beats_left at which to interrupt
+  logic [31:0] eg_poke_cmd;  // what to write to CTRL
+  logic        eg_reinit;    // the poke resets the core: wait for the card again
 
   always_comb begin
+    eg_poke     = 1'b0;
+    eg_poke_at  = 32'd0;
+    eg_poke_cmd = 32'(1 << CTRL_ABORT_BIT);
+    eg_reinit   = 1'b0;
     // Defaults: a verified write + read-back of EDGE_BLOCKS at the base.
     pat_q      = 3'(PAT_LFSR);
     eg_blocks  = 24'(EDGE_BLOCKS);
@@ -716,6 +765,59 @@ module bench_core
       5'd19: pat_q = 3'(PAT_SSO);
       default: ;
     endcase
+
+    // ---- SUITE_CTRL overrides the table above -----------------------------
+    // Recovery, not throughput: what the core does when a transfer is taken away
+    // from it halfway through, and whether it is still usable afterwards. The
+    // answer that matters is always the NEXT case, which is why every group ends
+    // with ordinary verified work.
+    if (SUITE == SUITE_CTRL) begin
+      pat_q      = 3'(PAT_LFSR);
+      eg_blocks  = 24'(CTRL_BLOCKS);
+      eg_lba     = 32'(LBA_BASE);
+      eg_err_exp = 8'(ERR_OK);
+      eg_verify  = 1'b1;
+      eg_rdonly  = 1'b0;
+
+      case (eg_case_q)
+        // ---- group 0: CTRL.ABORT in flight --------------------------------
+        // Aborting with the card still present is an orderly stop, not a
+        // failure: ultra_sd_block takes POST_DONE, closes with CMD12 and
+        // reports DONE with no error. So the expected answer is ERR_OK and a
+        // transfer that ENDS -- the data is forfeit, which is why none of these
+        // verify.
+        5'd0: begin eg_poke = 1'b1; eg_verify = 1'b0;
+                    eg_poke_at = 32'(CTRL_BLOCKS) * 32'(BEATS_PER_BLOCK) / 2; end
+        5'd1: begin eg_poke = 1'b1; eg_verify = 1'b0; eg_rdonly = 1'b1;
+                    eg_poke_at = 32'(CTRL_BLOCKS) * 32'(BEATS_PER_BLOCK) / 2; end
+        5'd2: begin eg_poke = 1'b1; eg_verify = 1'b0;
+                    eg_poke_at = 32'(CTRL_BLOCKS) * 32'(BEATS_PER_BLOCK) - 32'd4; end
+        5'd3: begin eg_poke = 1'b1; eg_verify = 1'b0; eg_rdonly = 1'b1;
+                    eg_poke_at = 32'd4; end
+        5'd4: ;   // ordinary work again: this is the real check on the four above
+
+        // ---- group 1: CTRL.SOFT_RESET in flight ---------------------------
+        // The synchronous equivalent of rst_n: the phase FSM goes back to
+        // SYS_RESET and the whole identification ladder runs again. The case
+        // passes if the core comes back at all, so it waits for CARD_READY
+        // rather than assuming a timing.
+        5'd5: begin eg_poke = 1'b1; eg_verify = 1'b0; eg_reinit = 1'b1;
+                    eg_poke_cmd = 32'(1 << CTRL_SOFT_RESET_BIT);
+                    eg_poke_at = 32'(CTRL_BLOCKS) * 32'(BEATS_PER_BLOCK) / 2; end
+        5'd6, 5'd7, 5'd8, 5'd9: ;   // and back to work
+
+        // ---- group 2: back to back, no gap --------------------------------
+        5'd10, 5'd11, 5'd12, 5'd13, 5'd14: ;
+
+        // ---- group 3: direction flipping ----------------------------------
+        // Every case here is a write followed by its read-back, so the bus turns
+        // around twice per case; the odd rows start from a read instead, which
+        // puts two reads back to back across the case boundary.
+        5'd15, 5'd17, 5'd19: ;
+        5'd16, 5'd18: eg_rdonly = 1'b1;
+        default: ;
+      endcase
+    end
   end
 
   // Widest run of set bits in a mask, and the phase at its centre -- the phase
@@ -954,33 +1056,47 @@ module bench_core
         if (int'(rep_idx) < FIELD_BASE + NDIV) begin
           ch_row    = int'(rep_idx) - FIELD_BASE;
           rep_label = (SUITE == SUITE_TIMING) ? "TM_DIV  "
-                    : (SUITE == SUITE_EDGE)   ? "EG_SHAPE" : "CH_DIV  ";
-          rep_value = (SUITE == SUITE_EDGE) ? eg_stat_q[ch_row]
+                    : (SUITE == SUITE_EDGE)   ? "EG_SHAPE"
+                    : (SUITE == SUITE_CTRL)   ? "CT_ABORT"
+                    : (SUITE == SUITE_SOAK)   ? "SK_ITER " : "CH_DIV  ";
+          rep_value = (SUITE == SUITE_EDGE || SUITE == SUITE_CTRL)
+                        ? eg_stat_q[ch_row]
+                    : (SUITE == SUITE_SOAK) ? sk_iter_a[ch_row]
                                             : 32'(DIV_TABLE[ch_row*8 +: 8]);
         end else if (int'(rep_idx) < FIELD_BASE + 2 * NDIV) begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + NDIV);
           rep_label = (SUITE == SUITE_TIMING) ? "TM_MASK "
-                    : (SUITE == SUITE_EDGE)   ? "EG_PATRN" : "CH_RDx10";
+                    : (SUITE == SUITE_EDGE)   ? "EG_PATRN"
+                    : (SUITE == SUITE_CTRL)   ? "CT_RESET"
+                    : (SUITE == SUITE_SOAK)   ? "SK_MISM " : "CH_RDx10";
           rep_value = (SUITE == SUITE_TIMING) ? 32'(tm_mask_q[ch_row])
-                    : (SUITE == SUITE_EDGE)   ? eg_stat_q[NDIV + ch_row]
+                    : (SUITE == SUITE_EDGE || SUITE == SUITE_CTRL)
+                        ? eg_stat_q[NDIV + ch_row]
+                    : (SUITE == SUITE_SOAK) ? sk_mism_a[ch_row]
                                               : char_rd_mbps_q[ch_row];
         end else if (int'(rep_idx) < FIELD_BASE + 3 * NDIV) begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + 2 * NDIV);
           rep_label = (SUITE == SUITE_TIMING) ? "TM_WIN  "
-                    : (SUITE == SUITE_EDGE)   ? "EG_NEG  " : "CH_WRx10";
+                    : (SUITE == SUITE_EDGE)   ? "EG_NEG  "
+                    : (SUITE == SUITE_CTRL)   ? "CT_B2B  "
+                    : (SUITE == SUITE_SOAK)   ? "SK_RETRY" : "CH_WRx10";
           rep_value = (SUITE == SUITE_TIMING)
                         ? 32'(tm_window(tm_mask_q[ch_row]))
-                    : (SUITE == SUITE_EDGE)
+                    : (SUITE == SUITE_EDGE || SUITE == SUITE_CTRL)
                         ? eg_stat_q[2*NDIV + ch_row]
+                    : (SUITE == SUITE_SOAK) ? sk_retry_a[ch_row]
                         : char_wr_mbps_q[ch_row];
         end else begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + 3 * NDIV);
           rep_label = (SUITE == SUITE_TIMING) ? "TM_BEST "
-                    : (SUITE == SUITE_EDGE)   ? "EG_BOUND" : "CH_GAP  ";
+                    : (SUITE == SUITE_EDGE)   ? "EG_BOUND"
+                    : (SUITE == SUITE_CTRL)   ? "CT_FLIP "
+                    : (SUITE == SUITE_SOAK)   ? "SK_XCHK " : "CH_GAP  ";
           rep_value = (SUITE == SUITE_TIMING)
                         ? 32'(tm_best_phase(tm_mask_q[ch_row]))
-                    : (SUITE == SUITE_EDGE)
+                    : (SUITE == SUITE_EDGE || SUITE == SUITE_CTRL)
                         ? eg_stat_q[3*NDIV + ch_row]
+                    : (SUITE == SUITE_SOAK) ? sk_xchk_a[ch_row]
                         : char_gap_q[ch_row];
         end
       end
@@ -1033,6 +1149,15 @@ module bench_core
           rq_addr  = REG_CTRL;
           rq_wdata = 32'(1 << CTRL_START_BIT);
         end
+        // SUITE_CTRL poking CTRL while the stream is running. X_RUN issues no
+        // request of its own, so the bus is free and the poke costs the
+        // transfer nothing it would not otherwise pay.
+        X_RUN: if (ct_req_q) begin
+          rq_valid = 1'b1;
+          rq_we    = 1'b1;
+          rq_addr  = REG_CTRL;
+          rq_wdata = ct_wdata_q;
+        end
         X_POLL: begin
           rq_valid = 1'b1;
           rq_addr  = REG_STATUS;
@@ -1051,7 +1176,8 @@ module bench_core
           // Outside a transfer the outer FSM owns the bus.
           case (sst_q)
             S_PROBE_VER: begin rq_valid = 1'b1; rq_addr = REG_VERSION; end
-            S_INIT_WAIT: begin rq_valid = 1'b1; rq_addr = REG_STATUS; end
+            S_INIT_WAIT,
+            S_EG_WAIT:   begin rq_valid = 1'b1; rq_addr = REG_STATUS; end
             S_READ_INFO: begin
               rq_valid = 1'b1;
               rq_addr  = info_step_q ? REG_CARD_BLK : REG_VERSION;
@@ -1334,12 +1460,34 @@ module bench_core
         char_wr_mbps_q[i] <= '0;
         tm_mask_q[i]      <= '0;
       end
-      eg_case_q <= '0;
+      eg_case_q  <= '0;
+      ct_arm_q   <= 1'b0;
+      ct_req_q   <= 1'b0;
+      ct_at_q    <= '0;
+      ct_wdata_q <= '0;
+      sk_iter_q  <= '0;
+      sk_mism_q  <= '0;
+      sk_retry_q <= '0;
+      sk_ck_q    <= '0;
       for (int i = 0; i < EDGE_CASES; i++) eg_stat_q[i] <= '0;
+      for (int i = 0; i < NDIV; i++) begin
+        sk_iter_a[i]  <= '0;
+        sk_mism_a[i]  <= '0;
+        sk_retry_a[i] <= '0;
+        sk_xchk_a[i]  <= '0;
+      end
     end else begin
       x_start   <= 1'b0;
       rep_start <= 1'b0;
       div_start <= 1'b0;
+
+      // Fire the armed poke once the stream has reached the chosen point, and
+      // retire it when the register write is answered.
+      if ((xst_q == X_RUN) && ct_arm_q && (beats_left_q <= ct_at_q)) begin
+        ct_arm_q <= 1'b0;
+        ct_req_q <= 1'b1;
+      end
+      if (ct_req_q && rsp_valid) ct_req_q <= 1'b0;
 
       case (sst_q)
         // ---- 0. is the register bus alive at all? -------------------------
@@ -1384,8 +1532,16 @@ module bench_core
               phase_q    <= '0;
               cfg_step_q <= '0;
               div_idx_q  <= '0;
+              if (SUITE == SUITE_SOAK) begin
+                x_dir    <= 1'b1;
+                x_lba    <= 32'(LBA_BASE);
+                x_blocks <= 24'(SOAK_BLOCKS);
+                x_start  <= 1'b1;
+              end
               sst_q      <= (SUITE == SUITE_TIMING) ? S_TM_SET
                           : (SUITE == SUITE_EDGE)   ? S_EG_SET
+                          : (SUITE == SUITE_CTRL)   ? S_EG_SET
+                          : (SUITE == SUITE_SOAK)   ? S_SK_WR
                                                     : S_SET_CFG;
             end
           end
@@ -1692,6 +1848,9 @@ module bench_core
           x_blocks <= eg_blocks;
           x_dir    <= !eg_rdonly;
           x_start  <= 1'b1;
+          ct_arm_q <= eg_poke;
+          ct_at_q  <= eg_poke_at;
+          ct_wdata_q <= eg_poke_cmd;
           sst_q    <= eg_rdonly ? S_EG_RD : S_EG_WR;
         end
 
@@ -1706,7 +1865,10 @@ module bench_core
               eg_stat_q[int'(eg_case_q)] <=
                 {8'h0, s_err_q[ERR_LSB +: 8], 8'h0,
                  8'((s_err_q[ERR_LSB +: 8] == eg_err_exp) ? 1 : 0)};
-              sst_q <= S_EG_NEXT;
+              sst_q <= eg_reinit ? S_EG_WAIT : S_EG_NEXT;
+            end else if (eg_reinit) begin
+              init_cyc_q <= '0;
+              sst_q      <= S_EG_WAIT;
             end else begin
               x_lba    <= eg_lba;
               x_blocks <= eg_blocks;
@@ -1727,7 +1889,24 @@ module bench_core
             // Only a case that was asked to verify contributes to MISMATCH; a
             // read of a sector we never wrote is not ours to compare.
             if (eg_verify) mism_total_q <= mism_total_q + mism_q;
-            sst_q        <= S_EG_NEXT;
+            sst_q        <= eg_reinit ? S_EG_WAIT : S_EG_NEXT;
+          end
+        end
+
+        // A soft reset put the core back at SYS_RESET, so the identification
+        // ladder is running again. Wait for it the way a driver would -- on
+        // STATUS.CARD_READY -- rather than on a cycle count that would be wrong
+        // on the next card.
+        S_EG_WAIT: begin
+          init_cyc_q <= init_cyc_q + 32'd1;
+          if (rsp_valid) begin
+            if (rsp_rdata[STATUS_CARD_RDY_BIT]) begin
+              eg_stat_q[int'(eg_case_q)] <= {8'h0, 8'h0, 8'h0, 8'h1};
+              sst_q <= S_EG_NEXT;
+            end else if (init_cyc_q > 32'(INIT_TIMEOUT_CYC)) begin
+              eg_stat_q[int'(eg_case_q)] <= {8'h0, 8'(ERR_INIT), 8'h0, 8'h0};
+              sst_q <= S_EG_NEXT;
+            end
           end
         end
 
@@ -1738,6 +1917,58 @@ module bench_core
           end else begin
             rep_start <= 1'b1;
             sst_q     <= S_REPORT;
+          end
+        end
+
+        // ---- SUITE_SOAK ----------------------------------------------------
+        S_SK_WR: begin
+          if (x_done) begin
+            if (s_err_q[ERR_LSB +: 8] != 8'(ERR_OK))
+              err_last_q <= 32'(s_err_q[ERR_LSB +: 8]);
+            x_dir    <= 1'b0;
+            x_lba    <= 32'(LBA_BASE);
+            x_blocks <= 24'(SOAK_BLOCKS);
+            x_start  <= 1'b1;
+            sst_q    <= S_SK_RD;
+          end
+        end
+
+        S_SK_RD: begin
+          if (x_done) begin
+            sk_mism_q    <= sk_mism_q + mism_q;
+            mism_total_q <= mism_total_q + mism_q;
+            sk_retry_q   <= sk_retry_q + s_retry_q;
+            if (s_err_q[ERR_LSB +: 8] != 8'(ERR_OK))
+              err_last_q <= 32'(s_err_q[ERR_LSB +: 8]);
+            sst_q <= S_SK_NEXT;
+          end
+        end
+
+        S_SK_NEXT: begin
+          sk_iter_q <= sk_iter_q + 32'd1;
+          // A checkpoint every SOAK_ITERS/NDIV pairs, and the last iteration
+          // always lands on one so the final row is the final state.
+          if ((((sk_iter_q + 32'd1) % 32'(SOAK_ITERS / NDIV)) == 32'd0) &&
+              (sk_ck_q < 3'(NDIV))) begin
+            sk_iter_a [int'(sk_ck_q)] <= sk_iter_q + 32'd1;
+            sk_mism_a [int'(sk_ck_q)] <= sk_mism_q;
+            sk_retry_a[int'(sk_ck_q)] <= sk_retry_q;
+            // el_sd_q is the bench's own SD-cycle count of the read that just
+            // finished; s_data_q is the core's payload count of the same one.
+            sk_xchk_a [int'(sk_ck_q)] <= (el_sd_q > s_data_q)
+                                           ? (el_sd_q - s_data_q) : 32'd0;
+            sk_ck_q <= sk_ck_q + 3'd1;
+          end
+
+          if ((sk_iter_q + 32'd1) >= 32'(SOAK_ITERS)) begin
+            rep_start <= 1'b1;
+            sst_q     <= S_REPORT;
+          end else begin
+            x_dir    <= 1'b1;
+            x_lba    <= 32'(LBA_BASE);
+            x_blocks <= 24'(SOAK_BLOCKS);
+            x_start  <= 1'b1;
+            sst_q    <= S_SK_WR;
           end
         end
 

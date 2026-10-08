@@ -77,7 +77,14 @@ module bench_top #(
 `endif
 
   // Payload per SUITE_EDGE case that is not a shape case.
-  parameter int EDGE_BLOCKS = 4
+  parameter int EDGE_BLOCKS = 4,
+
+  // SUITE_CTRL / SUITE_SOAK sizing. SOAK_ITERS is what makes R-MEAS-5's
+  // half-hour: at the tier divisor one pair of 8 blocks is about a millisecond,
+  // so 64 is a smoke test and six figures is the soak.
+  parameter int CTRL_BLOCKS = 8,
+  parameter int SOAK_ITERS  = 64,
+  parameter int SOAK_BLOCKS = 8
 ) (
   input  logic       clk27,      // 27 MHz board oscillator
 
@@ -264,6 +271,9 @@ module bench_top #(
     .RUNS              (RUNS),
     .SUITE             (SUITE),
     .EDGE_BLOCKS       (EDGE_BLOCKS),
+    .CTRL_BLOCKS       (CTRL_BLOCKS),
+    .SOAK_ITERS        (SOAK_ITERS),
+    .SOAK_BLOCKS       (SOAK_BLOCKS),
     .UART_CLKS_PER_BIT (UART_CLKS_PER_BIT)
   ) u_bench (
     .clk         (clk),
