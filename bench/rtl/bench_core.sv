@@ -539,6 +539,26 @@ module bench_core
   // olarak kartin programlama suresini olcuyor, bizimkini degil.
   logic        lat_rd_2nd_q;
 
+  // Elapsed system cycles of one CHAR_BLOCKS transfer per divisor point, which
+  // is what CH_RDx10 / CH_WRx10 are computed from. They are TRANSFER rates, not
+  // steady-state payload rates, and the difference is not small: a transfer
+  // carries a fixed per-transfer cost -- the command, the card's access
+  // latency, the closing CMD12 and the programming drain S_BUSY waits out --
+  // and CHAR_BLOCKS is only 512, so that cost is 38% of the read number.
+  // It is why CH_RDx10 reads 1200 where the 131072-block run reports 1831 on
+  // the same path: amortisation, not a slower core.
+  //
+  // The sweep separates the two by itself, because the fixed part does not move
+  // with the divisor while the payload part doubles with it. Take the
+  // difference between two adjacent points: that increment IS the payload time
+  // of the faster point, and the rest of its total is the fixed cost. On the
+  // run in reports/bench_live_final.txt the increments come out at 10.83 and
+  // 21.63 ms (a ratio of 1.998, so the model holds), giving
+  //   read : 193.7 Mbit/s payload + 6.65 ms per transfer
+  //   write: ~line rate  payload  + 4.03 ms per transfer
+  // Both directions carry it, so it is not one direction's debt to the other.
+  // Quote RD_Mbx10 / WR_Mbx10 for throughput; quote these for what a 256 KB
+  // request costs end to end.
   logic [31:0] char_rd_cyc_q [NDIV];
   logic [31:0] char_wr_cyc_q [NDIV];
   // The core's own STAT_GAP for each characterisation read: total SD cycles
