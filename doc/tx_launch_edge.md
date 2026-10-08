@@ -4,6 +4,64 @@ Durum: **uygulanmadi.** Karar, asagidaki hold analizinin mevcut veriyle
 kapatilamamasina dayaniyor. RTL'de launch kenari DEGISMEDI; bu revizyonda
 yalnizca `set_output_delay -min` isaret hatasi duzeltildi (bkz. en alt).
 
+## 0. MARJ: F->R semasi %20-25'i ASLA tutamaz
+
+Bu bolum sonradan eklendi; onceki "once (c)" onerisini GECERSIZ kiliyor.
+
+Model, senin verdigin tek slack sayisindan kuruldu ve raporun Fmax'ini aynen
+uretiyor -- yani guvenilir:
+
+    F->R semasinda  Fmax = 1000 / (2 * (OD_max + D))
+    D = 10.101 - 6.6 - (-0.222) = 3.723 ns
+    Fmax = 1000 / (2 * 10.323) = 48.44 MHz     (rapor: 48.4)  <-- model dogru
+
+`OD_max = 6.6 ns` SPEC'TEN SABIT (tISU 6.0 + iz 0.6). Ped gecikmesi 3.68 ns
+ve tC2Q 0.23 ns indirilemez. Dolayisiyla F->R semasinin TAVANI var:
+
+| Sema | D (ns) | Fmax (MHz) | 49.5'te marj |
+|---|---|---|---|
+| F->R bugun | 3.72 | 48.4 | **-2.2%** |
+| F->R + IOB | 2.66 | 54.0 | **+9.0%** |
+| F->R + IOB + ideal saat agaci | 2.41 | 55.5 | **+12.1%** |
+| **R->R bugun** | 3.72 | **96.9** | **+95.7%** |
+| R->R + IOB | 2.66 | 108.0 | +118.1% |
+
+Gereken: %20 icin 59.4 MHz, %25 icin 61.9 MHz.
+**Ikisi de F->R tavaninin (54-55 MHz) UZERINDE.**
+
+Sebebi aritmetik: yarim periyot 49.5 MHz'te 10.101 ns, ama spec'in istedigi
+setup arti pedin kendisi zaten
+
+    6.6 + 3.68 + 0.23 = 10.51 ns  >  10.101 ns
+
+Yani yarim periyot semasi 50 MHz'te YAPISAL olarak butce disinda. Bugunku
+tasarim 48.4 MHz'e ancak saat agaci kredisinin (1.247 ns) tamamini yiyerek
+ulasiyor; marji hic olamaz. Bu bir ayar sorunu degil.
+
+**SD spec'inin HS'te launch'i yukselen kenara almasinin sebebi tam olarak
+budur.** Yani istedigin marj, gorevin basinda istedigin degisikligi ZORUNLU
+kiliyor: tek yol R->R.
+
+### Bunun hold'a etkisi
+R->R'de hold FREKANSTAN BAGIMSIZ (launch ve yakalama ayni kenar), yani
+96.9 MHz'lik setup payindan hic faydalanmaz. Yapisal olarak cozulmek zorunda.
+Iyi haber: gecerli pencere `1.4 <= D_eff <= 13.602` ns, yani 12.2 ns genis.
+D_eff_min ~1.30-2.23 araliginda ve tek eksigi 1.4 ns tabanini gecmek; ped
+saatini 0.5-1 ns kadar one almak yetiyor. Yarim periyotluk dev bir kayma
+gerekmiyor.
+
+Ve dikkat: R->R semasinda **(c) ZARARLI** -- route'un 1.06 ns'i hold'un lehine
+calisiyor, IOB onu silip D_eff_min'i 1.4'un altina iter. (c) yalnizca
+(b) ile BIRLIKTE anlamli.
+
+### Revize oneri
+1. **R->R launch** (bu dokumanin sec. 5'i) -- marj icin baska yol yok.
+2. **Ped saatine kucuk faz ilerlemesi** (bench'te PLL zaten var) -- hold'u
+   yapisal olarak kapatir, olcumun insafina birakmaz.
+3. **IOB'ye DOKUNMA** -- 1.06 ns route hold'un yastigi.
+4. (a) ve tek basina (c) elendi: (a) bandwidth'in yarisini oder, (c) %9'da
+   tavan yapar.
+
 ## 1. Soru
 
 Bugun TX verisi SD saatinin DUSEN kenarinda suruluyor, kart YUKSELEN kenarda
@@ -156,6 +214,69 @@ Uc hiza bir kademe one cekilir:
 Yasaklar korundu: yeni saat alani yok, DDR/ODDR/OSER yok, RX/ornekleme yolu
 el degmemis.
 
+### 5.1 IKI GERCEK HATA: her iki CRC de naif kenar degisikliginde BOZULUYOR
+
+Gorev tanimi CRC7'yi "dikkat edilmesi gereken hiza" olarak isaretliyordu; bit
+bit izlendiginde ikisi de somut birer off-by-one veriyor. Ikisinin de kok
+sebebi ayni: **her iki CRC de REGISTERLI ped cikisini katliyor**, yani "bir
+onceki kenarda surulen bit"i. Dusen-kenar surusunde araya bir posedge girdigi
+icin bu calisiyor; her ikisi posedge'e alinirsa o ara kenar kaybolur.
+
+**(1) CRC7 devir teslimi -- `ultra_sd_cmd.sv`**
+
+`tx_cnt_q == 8` kolunda `cmd_out_q <= crc_q[CRC7_W-1]` var. Bugun son veri biti
+(D39) `tx_cnt_q == 9` negedge'inde surulur, ARADAKI posedge'de `crc_q`'ya
+katlanir, sonra `tx_cnt_q == 8` negedge'i nihai `crc_q`'yu okur. Her ikisi
+posedge'e alininca D39'un katlanmasi ile `crc_q`'nun okunmasi AYNI kenara
+duser ve okuma NBA geregi D39'u ICERMEYEN bayat degeri alir. Sonuc: CRC7'nin
+son biti yanlis, kart her komutu CRC hatasi olarak reddeder.
+
+Duzeltme tek satir -- o kolda `crc_q` yerine kombinasyonel `crc_nxt`:
+
+    cmd_out_q           <= crc_nxt[CRC7_W-1];
+    tx_sh_q[CRC7_W-2:0] <= crc_nxt[CRC7_W-2:0];
+
+`crc_nxt`, o kenarda `crc_q`'ya yazilmakta olan degerin aynisidir, yani tam
+olarak nihai CRC. Zamanlama bedeli yok: eklenen `crc_q -> crc7 -> cmd_out_q`
+yolu ICERIDE ve tam periyot (20.202 ns) butcesinde; ped yolunu
+(`cmd_out_q -> pad`) uzatmiyor.
+
+**(2) CRC16 beslemesi -- `ultra_sd_line.sv`**
+
+`crc_bit = dir_q ? dat_out_q : dat_in_i`. TX'te registerli `dat_out_q`
+katlaniyor. Her ikisi posedge'e alininca ayni kenarda `crc_fold_en` bir onceki
+cevrimin `in_data`'sini, `crc_bit` ise IKI cevrim oncesinin bitini gosterir --
+16 bitlik CRC bastan sona bir bit kaymis olur.
+
+Duzeltme: TX kolunda registerli cikis yerine o kenarda SURULECEK kombinasyonel
+degeri katla:
+
+    assign crc_bit = dir_q ? tx_grp : dat_in_i;
+
+(RX kolu `dat_in_i` olarak kalir, dokunulmaz.)
+
+### 5.2 line.sv'de bir cevrimlik kayma ve neden FSM refaktoru gerekiyor
+
+Yukaridaki iki duzeltmeden sonra bile naif kenar degisikligi `ultra_sd_line`'da
+NET BIR CEVRIM kayma birakiyor: `cell_q`, `seg_q`, `tx_drive`, `tx_grp`,
+`tx_take_o` hepsi posedge alaninda ve cikis blogu posedge'e alininca bunlarin
+kenar-oncesi (bir cevrim eski) degerini okur. Cerceve DOGRU cikar ama bir SD
+cevrimi GEC cikar; FSM ise `tx_done_q`'yu bir cevrim ERKEN kurar, yani kartin
+CRC status token'ini bir cevrim erken dinlemeye baslar ve host hala surerken
+dinler.
+
+Bunu kapatmak icin cikis blogunun bir SONRAKI durumun degerlerini gormesi
+lazim. `ultra_sd_line`'in FSM'i tek buyuk posedge blogu ve `cell_q`/`seg_q`
+yerinde ataniyor -- ayri bir `cell_nxt`/`seg_nxt` YOK. Yani dogru duzeltme ya
+bu next-state'i disa cikarmak ya da `dat_out_q`/`dat_oe_q`/`tx_sh_q`
+atamalarini FSM'in kendi case kollarinin ICINE tasimak. Ikisi de ~500 satirlik
+modulde mekanik ama genis bir refaktor.
+
+`ultra_sd_cmd` tarafinda ayni sorun YOK: orada yuk tetigini `tx_go_q` yerine
+`state_q == C_LOAD` yapmak yetiyor, cunku C_LOAD tek cevrimlik ve kosulsuz
+C_TX'e geciyor (C_IDLE ve C_GAP, yani ilk gonderim / retry / CMD55 sonrasi
+gercek komut, hepsi C_LOAD'dan gecer).
+
 ## 6. Uc secenegin karsilastirmasi
 
 Taban: SD saati 49.5 MHz, T = 20.202 ns, okuma 183 Mbit/s, yazma 155 Mbit/s.
@@ -194,26 +315,11 @@ Bugunku DUSEN kenar semasinda hold'un yarim periyotluk (10.101 ns) yastigi var
 ve IOB'nin hold bedeli o yastigin icinde tamamen erir (en kotu D_min ~0.1 ns
 ile bile pay ~+8.8 ns).
 
-## 7. ONERI
+## 7. ONERI -> bkz. sec. 0
 
-**(c)'yi, bugunku dusen kenar launch'i ile birlikte uygula.**
-
-Raporlanan gercek sorun `-0.222 ns`'lik tek bir setup ihlali. (c) veri
-yolundan 1.06 ns alir, yani `-0.222` -> `~+0.84` olur: ihlal kapanir.
-Bedeli yok -- throughput tam, yeni saat yok, RTL mantigi degismiyor, DDR
-primitifi yok, hold yastigi bozulmuyor. Launch kenarini hic degistirmeye
-gerek kalmaz; yukselen kenar yalnizca 49.5 MHz hedefinin ihtiyac duydugundan
-cok daha fazla pay istiyorsan gerekir.
-
-Bu yetmezse sira: (b) tam hizi korur ama PLL faz cikisi ister; (a) garanti
-calisir ama bandwidth'in yarisini oder; R->R launch ise ancak "Hold Paths
-Table" `D_min >= 1.4 ns` gosterirse gundeme gelir.
-
-### Uyari: core_pnr ped sayilari ped ATAMASIZ olculuyor
-`syn/core_pnr/build.tcl` bilincli olarak pin atamasi yapmiyor ("ped atamasi
-yok", yerlestirici serbest dagitiyor). Dolayisiyla bu sinifin 1.06 ns route ve
-3.68 ns ped dokumu gercek pinout'u temsil etmiyor. (c) secenegi ve `D_min`
-olcumu, GERCEK `.cst` ile kosan **bench** build'indan da dogrulanmali.
+Bu bolumun ilk hali "once (c), dusen kenari koru" diyordu. O oneri yalnizca
+"-0.222 ns ihlali kapat" hedefi icin dogruydu; **%20-25 marj hedefi icin
+yanlis** -- (c) 54.0 MHz'de (+%9) tavan yapiyor. Gecerli oneri sec. 0'da.
 
 ## 8. Bu revizyonda yapilan tek degisiklik: SDC `-min` isareti
 
