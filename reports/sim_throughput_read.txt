@@ -1,0 +1,10 @@
+tb_throughput_read -- behavioural card, no flash
+blocks              = 16
+bus_width           = 4
+line_clk_total      = 16998
+payload             = 16384
+crc16               = 256
+stat_gap_core       = 360
+first_gap           = 121
+inter_block_each    = 8
+nonpayload_perblock = 38
