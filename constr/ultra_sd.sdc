@@ -45,11 +45,37 @@ create_generated_clock -name sd_clk_pad -source [get_ports {clk}] -master_clock 
 ##   tODLY <= 14 ns   card output delay    -> input  max  14.6
 ##   tOH   >= 2.5 ns  card output hold     -> input  min   1.9
 ##   tISU  >=  6 ns   setup the card needs -> output max   6.6
-##   tIH   >=  2 ns   hold the card needs  -> output min  -2.6
+##   tIH   >=  2 ns   hold the card needs  -> output min  -1.4
 set_input_delay -clock sd_clk_pad -max 14.6 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
 set_input_delay -clock sd_clk_pad -min 1.9 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
 set_output_delay -clock sd_clk_pad -max 6.6 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
-set_output_delay -clock sd_clk_pad -min -2.6 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
+set_output_delay -clock sd_clk_pad -min -1.4 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
+## ---- neden -min = iz - tIH (= -1.4), -(iz + tIH) (= -2.6) DEGIL ------------
+## Bu deger -2.6'dan -1.4'e duzeltildi. Gerekce, tek bir fiziksel buyuklugun
+## iki kontrolu ayni YONDE kaydirmasi zorunlulugu:
+##
+##   set_output_delay -max = iz + tISU = 0.6 + 6.0 =  6.6
+##   set_output_delay -min = iz - tIH  = 0.6 - 2.0 = -1.4
+##
+## Iz gecikmesi veriyi kartta DAHA GEC vardirir. Gec varmak setup'i
+## ZORLASTIRIR (-max buyur) ama hold'u KOLAYLASTIRIR (-min buyur). Yani 0.6 ns
+## her iki sinira da ARTI isaretle girer. Eski -2.6 = -(0.6 + 2.0) ifadesi izi
+## min tarafinda EKSI isaretle sayiyordu; bu, ayni sabit gecikmenin hem setup'i
+## hem hold'u ayni anda sikistirdigi anlamina gelir ve fiziksel olarak
+## imkansizdir. -max satiri zaten standart konvansiyonu kullaniyordu, yani
+## dosya kendi icinde tutarsizdi; duzeltme tutarsizligi -min tarafinda gideriyor.
+##
+## Aracin hold kontrolu su forma iner:
+##   t_ic_min + output_delay_min >= 0   =>   t_ic_min >= -output_delay_min
+## Fizik ise t_ic + iz >= tIH, yani t_ic >= 2.0 - 0.6 = 1.4 istiyor.
+## Dolayisiyla -output_delay_min = 1.4  ->  output_delay_min = -1.4.
+##
+## Eski -2.6, t_ic_min >= 2.6 talep ediyordu: fizigin istediginden 1.2 ns daha
+## karamsar. BUGUNKU tasarimda bu fark GORUNMEZ, cunku veri DUSEN kenarda
+## suruluyor ve hold tarafinda yarim periyotluk (10.101 ns) fazladan pay var --
+## hicbir hold yolu bu kisitla baglanmiyor. Fark ancak TX launch'i YUKSELEN
+## kenara alinirsa baglayici hale gelir, cunku o semada launch ve ornekleme
+## kenari ayni olur ve hold dogrudan tIH'e dayanir. Bkz. doc/tx_launch_edge.md.
 
 ## The PHY does not capture the pads with the SD clock. It detects the pad
 ## clock's rising edge in the system-clock domain, then counts

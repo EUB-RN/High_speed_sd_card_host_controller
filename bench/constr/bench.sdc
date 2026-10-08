@@ -49,12 +49,14 @@ create_generated_clock -name sd_clk_pad -source [get_pins {u_pll/CLKOUT}] -maste
 ##   tODLY <= 14 ns   card output delay      -> input  max  14.6
 ##   tOH   >= 2.5 ns  card output hold       -> input  min   1.9
 ##   tISU  >=  6 ns   setup the card needs   -> output max   6.6
-##   tIH   >=  2 ns   hold the card needs    -> output min  -2.6
+##   tIH   >=  2 ns   hold the card needs    -> output min  -1.4
 set_input_delay -clock sd_clk_pad -max 14.6 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
 set_input_delay -clock sd_clk_pad -min 1.9 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
 
 set_output_delay -clock sd_clk_pad -max 6.6 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
-set_output_delay -clock sd_clk_pad -min -2.6 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
+set_output_delay -clock sd_clk_pad -min -1.4 [get_ports {sd_cmd sd_dat[0] sd_dat[1] sd_dat[2] sd_dat[3]}]
+## -min icin iz - tIH = 0.6 - 2.0 = -1.4 konvansiyonu; eski -2.6 izi min
+## tarafinda ters isaretle sayiyordu. Tam gerekce constr/ultra_sd.sdc icinde.
 
 ## THE SAMPLING WINDOW NEEDS A MULTICYCLE
 ##
