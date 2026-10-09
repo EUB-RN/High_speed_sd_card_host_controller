@@ -6,11 +6,12 @@ module tb_system_controller;
   logic clk = 0, rst_n_i, soft_reset_i, stat_clear_i, sd_cd_i;
   logic [CFG_CLK_W-1:0] clk_div_i;
   logic init_done_i, start_i, dir_i, abort_i, xfer_done_i, xfer_err_i;
-  logic bus_4bit_i, force_1bit_i;
+  logic bus_4bit_i;
+  logic xfer_launch_o;
   logic rst_n_o, core_rst_n_o, card_present_o, card_change_o;
   logic [CFG_CLK_W-1:0] sd_clk_ratio_o;
   logic sd_clk_en_o;
-  logic cmd_clk_i;
+  logic sd_clk_i;
   logic bus_wide_o;
   sys_phase_e sys_phase_o;
   logic ramp_done_o, cfg_start_o;
@@ -58,9 +59,9 @@ module tb_system_controller;
   endtask
 
   task automatic pulse_sd_clock;
-    @(negedge clk); cmd_clk_i = 1;
+    @(negedge clk); sd_clk_i = 1;
     repeat (2) @(posedge clk);
-    @(negedge clk); cmd_clk_i = 0;
+    @(negedge clk); sd_clk_i = 0;
     repeat (2) @(posedge clk);
   endtask
 
@@ -68,8 +69,8 @@ module tb_system_controller;
     checks = 0; failures = 0; saw_card_change = 0; saw_cfg_start = 0;
     rst_n_i = 0; soft_reset_i = 0; stat_clear_i = 0; sd_cd_i = 1; clk_div_i = 8'd4;
     init_done_i = 0; start_i = 0; dir_i = 0; abort_i = 0;
-    xfer_done_i = 0; xfer_err_i = 0; bus_4bit_i = 1; force_1bit_i = 0;
-    cmd_clk_i = 0;
+    xfer_done_i = 0; xfer_err_i = 0; bus_4bit_i = 1;
+    sd_clk_i = 0;
     repeat (3) @(posedge clk);
     check(!rst_n_o && !core_rst_n_o && !card_present_o, "external reset state");
     rst_n_i = 1;
@@ -94,23 +95,49 @@ module tb_system_controller;
     @(negedge clk); start_i = 1;
     @(posedge clk); #1; @(negedge clk); start_i = 0;
     check(sys_phase_o == SYS_CONFIG, "start ignored before init completion");
+    // ...ama SESSIZCE degil: kabul edilemeyen START sebebini ERR'e yazar,
+    // yoksa surucu hic degismeyen bir STATUS'u sonsuza yoklar.
+    check(err_o == ERR_CARD_STATE, "start before CARD_READY reports ERR_CARD_STATE");
+    check(!xfer_launch_o, "a refused start raises no launch pulse");
+
+    // Merdiven bittiginde surucuye haber gider: CARD_READY'nin yukselen
+    // kenari da CARD_CHANGE darbesi uretir, yoksa "artik START yazabilirsin"
+    // bilgisi yalnizca yoklama ile ogrenilebilirdi.
+    // card_ready_i ve init_done_i ustte ayni tele (u_cmd'in init_done'u)
+    // baglidir; burada ikisi ayri net oldugu icin birlikte suruluyor.
+    @(negedge clk); init_done_i = 1; card_ready_i = 1;
+    @(posedge clk); #1;
+    check(card_change_o, "CARD_READY rising raises CARD_CHANGE");
+    repeat (2) @(posedge clk); #1;
+    check(!card_change_o, "the ready notification is a single-cycle pulse");
 
     init_done_i = 1; dir_i = 0;
     @(negedge clk); start_i = 1;
     @(posedge clk); #1; @(negedge clk); start_i = 0;
     check(sys_phase_o == SYS_READ, "read phase selected");
+    // Akis master'i bu darbeyle arm edilir, CTRL.START'in kendisiyle degil.
+    check(xfer_launch_o, "an accepted start pulses xfer_launch");
     // L3 START'i bir darbe olarak degil, bu SEVIYE olarak gorur: bolunmus SD
     // saatinde tek cevrimlik bir darbe kaybolurdu.
     check(xfer_go_o, "transfer permission is a level while the phase runs");
-    force_1bit_i = 1;
+    // Genislik artik TEK kaynakta kararlastiriliyor: merdiven CFG_PHY'nin
+    // FORCE_1BIT'ini ACMD6'nin argumanina uyguluyor ve sonucu bus_4bit_i
+    // olarak buraya veriyor. Bu modulun isi o karari transfer boyunca
+    // DONDURMAK; ikinci bir daraltma katmani yok (host 1-bit'e dusup kartin
+    // 4-bit'te kalmasi tam olarak oyle olusuyordu).
+    bus_4bit_i = 0;
     repeat (2) @(posedge clk); #1;
     check(bus_wide_o, "bus width locked during transfer");
+    check(status_o[STATUS_BUS_WIDTH_LSB +: 2] == 2'b01,
+          "STATUS reports the width L1 is actually driving");
     @(negedge clk); xfer_done_i = 1;
     @(posedge clk); #1; @(negedge clk); xfer_done_i = 0;
     check(sys_phase_o == SYS_CONFIG, "transfer completion returns to config");
     check(!xfer_go_o, "transfer permission drops with the phase");
     repeat (2) @(posedge clk); #1;
-    check(!bus_wide_o, "force-one-bit applied between transfers");
+    check(!bus_wide_o, "ladder's width decision applied between transfers");
+    check(status_o[STATUS_BUS_WIDTH_LSB +: 2] == 2'b00,
+          "STATUS follows the width down, it does not report capability");
 
     // CTRL.STAT_CLEAR: sayaclar bu modulde degil, ama silme komutu buradan
     // cikar. Darbe tek clk cevrimi, sayaclar ise daha yavas SD saatlerinde --

@@ -1,0 +1,25 @@
+--- ultra_sd_line ---
+tb_ultra_sd_line: PASSED
+--- block_requests ---
+tb_block_requests: PASSED (59 checks)
+--- block_flow ---
+tb_block_flow: PASSED (91 checks)
+--- block_axis_read ---
+tb_block_axis_read: PASSED (133 checks)
+--- block_axis_write ---
+tb_block_axis_write: PASSED (262 checks)
+--- block_stat ---
+tb_block_stat: PASSED (10 checks)
+--- top_integration ---
+tb_top_integration: PASSED (29 checks)
+--- sd_card_model ---
+/home/hpw/High_speed_sd_card_host_controller/test/vip/tb_sd_card_model.sv:34: warning: Instantiating module ultra_sd_cmd with dangling input port 17 (force_1bit_i) floating.
+/home/hpw/High_speed_sd_card_host_controller/test/vip/tb_sd_card_model.sv:34: warning: Instantiating module ultra_sd_cmd with dangling input port 18 (force_ds_i) floating.
+tb_sd_card_model: PASSED (35 checks)
+--- line_4 ---
+tb_ultra_sd_line: PASSED
+--- line_64 ---
+tb_ultra_sd_line: PASSED
+--- line_512 ---
+tb_ultra_sd_line: PASSED
+--- lint ---

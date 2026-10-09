@@ -55,6 +55,9 @@ module ultra_sd_axi_top
   output logic [CFG_CLK_W-1:0] CFG_CLK,
   input  logic [CFG_CLK_W-1:0] CFG_CLK_HW,
   output logic [CFG_PHY_W-1:0] CFG_PHY,
+  // Transfer gercekten basladi (system_controller, clk alani). Okuma akis
+  // master'i bununla arm edilir: CTRL.START'in kendisi reddedilmis olabilir.
+  input  logic                 xfer_launch,
   output logic                 rd_xfer_busy,
 
   input  logic [STATUS_W-1:0]  STATUS,
@@ -170,7 +173,7 @@ module ultra_sd_axi_top
   logic        rd_start;
   logic [31:0] rd_beats;
 
-  assign rd_start = CTRL[CTRL_START_BIT] && !XFER;
+  assign rd_start = xfer_launch && !XFER;
   assign rd_beats = 32'(BLOCKS) * 32'(BEATS_PER_BLOCK);
 
   axis_rd_master #(

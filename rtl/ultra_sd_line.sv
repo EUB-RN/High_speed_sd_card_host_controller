@@ -124,8 +124,18 @@ module ultra_sd_line
   logic [CNT_W-1:0]          cnt_q;
   logic [WORD_CNT_W-1:0]     word_q;
   logic [WORD_CNT_W-1:0]     xfer_words_q;
+  // start_i / dir_i artik AYNI saatten gelir: L3 (ultra_sd_block) saat
+  // birlestirmesinden sonra bu modulle ayni agda kosuyor. Asagidaki iki
+  // kademe bu yuzden SENKRONIZER DEGIL, bilincli bir boru hatti: L3'un arm
+  // muhasebesi (arm_left_q / rx_arm_taken) tam bu gecikmeye gore kurulu.
   logic [1:0]                start_sync_q;
   logic                      dir_sync_q;
+
+  // bus_wide_i ise GERCEK bir crossing: system_controller clk alaninda uretir
+  // (cdc.md 6). Tek bit, dolayisiyla iki flopluk senkronizer yeterli ve
+  // gereklidir -- eskiden dogrudan ornekleniyordu, yani belgelenen yapi RTL'de
+  // yoktu. Transfer basinda wide_q'ya kilitlenir, L1 maskeyi ondan turetir.
+  logic [1:0]                wide_sync_q;
 
   logic [CRC16_W-1:0]        crc_q [SD_DATA_LANES];
   logic [CRC16_W-1:0]        crc_d [SD_DATA_LANES];
@@ -230,6 +240,7 @@ module ultra_sd_line
       xfer_words_q <= WORD_CNT_W'(XFER_WORDS);
       start_sync_q <= '0;
       dir_sync_q   <= 1'b0;
+      wide_sync_q  <= '0;
       rx_sh_q      <= '0;
       rx_data_q    <= '0;
       rx_valid_q   <= 1'b0;
@@ -252,6 +263,7 @@ module ultra_sd_line
 
       start_sync_q <= {start_sync_q[0], start_i};
       dir_sync_q   <= dir_i;
+      wide_sync_q  <= {wide_sync_q[0], bus_wide_i};
 
       rx_valid_q <= 1'b0;
       rx_done_q  <= 1'b0;
@@ -293,7 +305,7 @@ module ultra_sd_line
         CELL_IDLE: begin
           if (start_sync_q[1]) begin
 
-            wide_q <= bus_wide_i;
+            wide_q <= wide_sync_q[1];
             dir_q  <= dir_sync_q;
             word_q <= '0;
 

@@ -51,7 +51,6 @@ module tb_block_stat;
     .xfer_err_i       (fail_o),          // Table 5-1 "fail"
 
     .bus_4bit_i       (1'b1),
-    .force_1bit_i     (1'b0),
 
     .rst_n_o          (),
     .core_rst_n_o     (),
@@ -59,7 +58,7 @@ module tb_block_stat;
     .card_change_o    (),
     .sd_clk_ratio_o   (),
     .sd_clk_en_o      (),
-    .cmd_clk_i        (1'b0),
+    .sd_clk_i         (1'b0),
     .bus_wide_o       (),
     .xfer_go_o        (),
     .sys_phase_o      (),

@@ -34,6 +34,9 @@ module tb_init_ladder_full;
   logic bus_4bit_o;
   logic [CFG_CLK_W-1:0] clk_div_o;
   logic [15:0] stat_retry_cmd_o;
+  // CFG_PHY geri cekilme bitleri; reset_case() ikisini de temizler, ozel
+  // vakalar reset'ten SONRA kurar (merdiven kosarken orneklenirler).
+  logic force_1bit_i, force_ds_i;
   logic cmd_out, cmd_oe, cmd_in;
   logic [31:0] cap_arg;
   resp_e idle_resp;
@@ -55,6 +58,7 @@ module tb_init_ladder_full;
     .rsp_crc_ok_o(rsp_crc_ok_o), .rsp_err_o(rsp_err_o), .err_o(err_o),
     .card_ready_o(card_ready_o),
     .card_present_i, .ramp_done_i,
+    .force_1bit_i, .force_ds_i,
     .init_busy_o, .init_done_o, .init_err_o, .init_err_code_o,
     .dat_rd_start_o, .dat_rd_bytes_o,
     .dat_rd_data_i, .dat_rd_valid_i, .dat_rd_busy_i, .dat_rd_crc_ok_i,
@@ -72,6 +76,7 @@ module tb_init_ladder_full;
 
   task automatic reset_case;
     rst_n = 0; card_present_i = 0; ramp_done_i = 0;
+    force_1bit_i = 0; force_ds_i = 0;
     cmd_in = 1;
     dat_rd_data_i = 0; dat_rd_valid_i = 0; dat_rd_busy_i = 0; dat_rd_crc_ok_i = 1;
     repeat (4) @(posedge cmd_clk); rst_n = 1; repeat (2) @(posedge cmd_clk);
@@ -79,7 +84,7 @@ module tb_init_ladder_full;
   endtask
 
   // CMD0 .. CMD7: kimlik ve secim. Sonrasi ACMD51 (SCR) ile devam eder.
-  task automatic walk_to_scr;
+  task automatic walk_to_scr(input logic [1:0] csd_structure);
     logic [119:0] csd;
     capture_command(CMD0_GO_IDLE_STATE);
 
@@ -100,7 +105,7 @@ module tb_init_ladder_full;
 
     capture_command(CMD9_SEND_CSD);
     check(cap_arg == 32'h1234_0000, "CMD9 addresses the negotiated RCA");
-    csd = '0; csd[119:118] = 2'b01; csd[61:40] = 22'd1023; send_long(csd);
+    csd = '0; csd[119:118] = csd_structure; csd[61:40] = 22'd1023; send_long(csd);
 
     capture_command(CMD7_SELECT_CARD);
     check(cap_arg == 32'h1234_0000, "CMD7 selects the negotiated RCA");
@@ -114,6 +119,26 @@ module tb_init_ladder_full;
     repeat (4) @(posedge cmd_clk); #1;
     check(dat_rd_start_o && dat_rd_bytes_o == 11'd8,
           "ACMD51 arms an 8-byte DAT read");
+  endtask
+
+
+  // CMD0 .. CMD9, ama CSD v1.0 (SDSC). Merdiven CMD9'un cevabinda durmali,
+  // dolayisiyla walk_to_scr'in geri kalani (CMD7, ACMD51) hic kosmaz.
+  task automatic walk_to_scr_sdsc;
+    logic [119:0] csd;
+    capture_command(CMD0_GO_IDLE_STATE);
+    capture_command(CMD8_SEND_IF_COND);
+    send_short(CMD8_SEND_IF_COND, 32'h000001aa, 1);
+    capture_command(CMD55_APP_CMD);
+    send_short(CMD55_APP_CMD, 32'h00000100, 1);
+    capture_command(ACMD41_SD_SEND_OP_COND);
+    send_short(6'h3f, 32'hc0000000, 0);
+    capture_command(CMD2_ALL_SEND_CID);
+    csd = '0; send_long(csd);
+    capture_command(CMD3_SEND_RELATIVE_ADDR);
+    send_short(CMD3_SEND_RELATIVE_ADDR, 32'h12340000, 1);
+    capture_command(CMD9_SEND_CSD);
+    csd = '0; csd[119:118] = 2'b00; csd[61:40] = 22'd1023; send_long(csd);
   endtask
 
   task automatic send_dat_frame(
@@ -163,7 +188,7 @@ module tb_init_ladder_full;
 
     // 1. Full capability path: SCR advertises 4-bit, switch status confirms HS.
     reset_case();
-    walk_to_scr();
+    walk_to_scr(2'b01);
     send_dat_frame(2, 8'h05, 1);
     finish_after_scr(32'h0000_0002, 8'h01);
     repeat (6) @(posedge cmd_clk); #1;
@@ -176,7 +201,7 @@ module tb_init_ladder_full;
 
     // 2. Graceful fallback: no 4-bit in SCR and switch result not HS.
     reset_case();
-    walk_to_scr();
+    walk_to_scr(2'b01);
     send_dat_frame(2, 8'h01, 1);
     finish_after_scr(32'h0000_0000, 8'h00);
     repeat (6) @(posedge cmd_clk); #1;
@@ -185,7 +210,7 @@ module tb_init_ladder_full;
 
     // 3. A DAT CRC failure must not become a successful initialisation.
     reset_case();
-    walk_to_scr();
+    walk_to_scr(2'b01);
     send_dat_frame(2, 8'h05, 0);
     repeat (6) @(posedge cmd_clk); #1;
     check(init_err_o && !init_done_o && init_err_code_o == ERR_DAT_CRC,
@@ -193,10 +218,53 @@ module tb_init_ladder_full;
 
     // 4. A card that answers ACMD51 but never starts DAT is bounded.
     reset_case();
-    walk_to_scr();
+    walk_to_scr(2'b01);
     repeat (700) @(posedge cmd_clk); #1;
     check(init_err_o && !init_done_o && init_err_code_o == ERR_DAT_TIMEOUT,
           "missing SCR payload reports bounded ERR_DAT_TIMEOUT");
+
+    // 4b. CFG_PHY.FORCE_1BIT: kart 4-bit destekledigini SOYLESE bile host
+    //     1-bit'te kalir -- ve kritik olan, bunu ACMD6'nin ARGUMANINDA yapar,
+    //     yani kart da 1-bit'e gecer. Eskiden daraltma yalniz L1'in girisinde
+    //     yapiliyordu: kart 4 hat surerken host DAT0'i okuyordu.
+    reset_case();
+    force_1bit_i = 1;
+    walk_to_scr(2'b01);
+    send_dat_frame(2, 8'h05, 1);              // SCR: 4-bit destekli
+    finish_after_scr(32'h0000_0000, 8'h01);   // ACMD6 argumani 1-bit olmali
+    repeat (6) @(posedge cmd_clk); #1;
+    check(init_done_o && !bus_4bit_o,
+          "FORCE_1BIT narrows the card as well as the host");
+    check(speed_o == SPEED_HS,
+          "FORCE_1BIT does not drag the speed down with it");
+
+    // 4c. CFG_PHY.FORCE_DS: CMD6 switch'i hic denenmez, merdiven Default
+    //     Speed'de biter. Genislik bundan etkilenmez.
+    reset_case();
+    force_ds_i = 1;
+    walk_to_scr(2'b01);
+    send_dat_frame(2, 8'h05, 1);
+    capture_command(CMD55_APP_CMD);
+    send_short(CMD55_APP_CMD, 32'h00000100, 1);
+    capture_command(ACMD6_SET_BUS_WIDTH);
+    check(cap_arg == 32'h0000_0002, "FORCE_DS leaves the 4-bit switch alone");
+    send_short(ACMD6_SET_BUS_WIDTH, 32'h00000100, 1);
+    repeat (8) @(posedge cmd_clk); #1;
+    check(init_done_o && !init_err_o,
+          "FORCE_DS completes the ladder without the switch");
+    check(speed_o == SPEED_DS && clk_div_o == 8'd4 && bus_4bit_o,
+          "FORCE_DS holds Default Speed at the DS divisor");
+    check(!cmd_oe, "no CMD6 frame is driven under FORCE_DS");
+
+    // 4d. SDSC (CSD v1.0) DESTEKLENMIYOR ve bu ACIKCA soyleniyor. Eskiden v2
+    //     kapasite formulu kosulsuz calisiyor, kart "basariyla" baslatiliyor
+    //     ve CARD_BLK cop cikiyordu (R-FUNC-5: sessizce yanlis islenmeyecek).
+    reset_case();
+    walk_to_scr_sdsc();
+    repeat (8) @(posedge cmd_clk); #1;
+    check(init_err_o && !init_done_o && init_err_code_o == ERR_UNSUPPORTED,
+          "SDSC is rejected as unsupported, not silently mis-sized");
+    check(card_blk_o == 32'd0, "a rejected card publishes no capacity");
 
     // 5. Voltage/check-pattern mismatch must stop before ACMD41.
     reset_case();
@@ -221,13 +289,13 @@ module tb_init_ladder_full;
 
     // 7. Removal from a completed state clears all learned card state.
     reset_case();
-    walk_to_scr();
+    walk_to_scr(2'b01);
     send_dat_frame(2, 8'h05, 1);
     finish_after_scr(32'h0000_0002, 8'h01);
     repeat (6) @(posedge cmd_clk); #1;
     check(init_done_o, "ladder completed before the eject");
     card_present_i = 0;
-    @(posedge cmd_clk); #1;
+    repeat (3) @(posedge cmd_clk); #1;   // iki flopluk senkronizer (cdc.md 8)
     check(!init_done_o && !init_err_o && rca_o == 0 && card_blk_o == 0,
           "card removal clears completed initialization state");
 

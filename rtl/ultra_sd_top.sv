@@ -27,18 +27,21 @@
 //   ---------------------------------------------------------------------------
 //   SAAT ALANLARI
 //   ---------------------------------------------------------------------------
-//   clk       : L4 (AXI), system_controller, PHY'nin kontrol mantigi
-//   cmd_clk   : L2 (u_cmd) ve L3 (u_block)
-//   line_clk  : L1 (u_line)
+//   clk          : L4 (AXI), system_controller, PHY'nin kontrol mantigi
+//   sd_clk_core  : L1, L2, L3 ve rampa sayaci -- TEK bolunmus SD saati
 //   Saat yolu iki parcaya bolunmustur:
-//     ultra_sd_phy_gowin        BOLER + GATE'LER -> clk_controller, DQCE, DCS
-//     faz FSM'i (system_controller)  KARAR       -> oran + enable + secim biti
+//     ultra_sd_phy_gowin        BOLER + GATE'LER -> clk_controller, DQCE
+//     faz FSM'i (system_controller)  KARAR       -> oran + enable
 //   Bolunmus (ham) saat artik hicbir modul siniri gecmiyor: sysctl'den PHY'a
 //   yalnizca bir SAYI (oran) ve bir enable gider, PHY'dan geri gate'lenmis
-//   saatler tuketicilere ve rampa sayacina doner.
-//   cmd_clk ile line_clk ayni clk_controller'dan, ayni bolme oranindan cikar,
-//   yani faz kilitlidir (doc/cdc.md): aralarindaki yollar crossing sayilmaz.
-//   clk <-> cmd_clk/line_clk gecisleri doc/cdc.md 1,2,6 numarali satirlardir ve
+//   saat tuketicilere ve rampa sayacina doner.
+//   Burada eskiden iki saat vardi (cmd_clk / line_clk) ve aralarinda bir DCS:
+//   ikisi ayni bolucuden ayni oranla ciktigi, secim biti sabit 0 baglandigi ve
+//   enable'lari ayni tel oldugu icin ucu de olu mantikti. Tek dalga formuna
+//   iki global saat agi harcaniyor, STA iki ayri base clock goruyor ve
+//   L1 <-> L3 yollari bos yere saatler-arasi analiz ediliyordu. Simdi tek
+//   saat var; L1/L2/L3 arasi yollar ayni-saat yollaridir.
+//   clk <-> sd_clk_core gecisleri doc/cdc.md 1, 2 ve 6 numarali satirlardir ve
 //   tamami tuketici modulun ICINDE cozulur; burada senkronizer YOKTUR.
 //
 //   ---------------------------------------------------------------------------
@@ -46,9 +49,9 @@
 //   ---------------------------------------------------------------------------
 //   Ayri bir istatistik modulu YOK. Her sayac olayini URETEN FSM'in icinde ve
 //   o FSM'in saatinde durur (R-IF-11), cunku olay orada bir case kolu:
-//     STAT_DATA, STAT_BUSY       u_line   (line_clk)
-//     STAT_GAP, STAT_RETRY[15:0] u_block  (cmd_clk)
-//     STAT_RETRY[31:16]          u_cmd    (cmd_clk)
+//     STAT_DATA, STAT_BUSY       u_line   (sd_clk_core)
+//     STAT_GAP, STAT_RETRY[15:0] u_block  (sd_clk_core)
+//     STAT_RETRY[31:16]          u_cmd    (sd_clk_core)
 //   Bu dosyanin payi yalnizca STAT_CLEAR toggle'ini ucune dagitmak ve iki
 //   yeniden deneme yarisini tek registera birlestirmek.
 //
@@ -149,11 +152,8 @@ module ultra_sd_top #(
   logic sys_rst_n;      // dis reset, senkron birakilmis
   logic core_rst_n;     // dis reset + CTRL.SOFT_RESET
   logic [CFG_CLK_W-1:0] sd_clk_ratio; // bolme orani -> PHY'daki clk_controller
-  logic cmd_clk_en;     // DQCE enable, CMD kanali
-  logic line_clk_en;    // DQCE enable, LINE kanali
-  logic pad_line_sel;   // DCS secimi: 1 = ped line_clk'ten surulur
-  logic cmd_clk;        // PHY'da gate'lenmis CMD saati  -> L2, L3, rampa sayaci
-  logic line_clk;       // PHY'da gate'lenmis LINE saati -> L1
+  logic sd_clk_en;      // DQCE enable
+  logic sd_clk_core;    // PHY'da gate'lenmis SD saati -> L1, L2, L3, rampa
 
   // ---------------------------------------------------------------------------
   // L4 <-> cekirdek: Table 5-1 registerlari
@@ -181,6 +181,7 @@ module ultra_sd_top #(
   logic                     bus_wide;       // 1 = 4-bit DAT, 0 = 1-bit
   logic                     ramp_done;
   logic                     xfer_go;        // L3'e transfer izni, seviye
+  logic                     xfer_launch;    // transfer basladi, tek cevrim
 
   // ---------------------------------------------------------------------------
   // L2: komut motoru + baslatma merdiveni (tek modul)
@@ -305,7 +306,6 @@ module ultra_sd_top #(
     .xfer_err_i       (blk_fail),
 
     .bus_4bit_i       (bus_4bit),
-    .force_1bit_i     (cfg_phy[CFG_PHY_FORCE_1BIT]),
 
     .rst_n_o          (sys_rst_n),
     .core_rst_n_o     (core_rst_n),
@@ -315,14 +315,15 @@ module ultra_sd_top #(
 
     // Saat kararlari PHY'a gider: oran + gate enable, saatin kendisi degil.
     .sd_clk_ratio_o   (sd_clk_ratio),
-    .sd_clk_en_o      (cmd_clk_en),
+    .sd_clk_en_o      (sd_clk_en),
 
     // Rampa sayimi icin gate'lenmis SD saati
-    .cmd_clk_i        (cmd_clk),
+    .sd_clk_i         (sd_clk_core),
 
     .bus_wide_o       (bus_wide),
     .xfer_go_o        (xfer_go),
 
+    .xfer_launch_o    (xfer_launch),
     .sys_phase_o      (),
     .ramp_done_o      (ramp_done),
     .cfg_start_o      (),
@@ -345,14 +346,10 @@ module ultra_sd_top #(
     .stat_clear_tgl_o (stat_clear_tgl)
   );
 
-  assign line_clk_en  = cmd_clk_en;
-  assign pad_line_sel = 1'b0;
-
   // ===========================================================================
   // L4 -- AXI4-Lite + register dosyasi + AXI4-Stream adaptorleri
   //
-  // sd_clk tarafi cmd_clk'tir: L3 o saatte kosar, dolayisiyla async FIFO'larin
-  // SD tarafi da orada olmak zorunda (doc/cdc.md 1 ve 2).
+  // FIFO'larin SD tarafi sd_clk_core'dur: L3 o saatte kosar (doc/cdc.md 1, 2).
   // Register dosyasi sys_rst_n ile kurulur, core_rst_n ile DEGIL: soft reset
   // yazilimin konfigurasyonunu silmemeli.
   // ===========================================================================
@@ -364,7 +361,7 @@ module ultra_sd_top #(
   ) u_axi (
     .clk                  (clk),
     .rst_n                (sys_rst_n),
-    .sd_clk               (cmd_clk),
+    .sd_clk               (sd_clk_core),
     .sd_rst_n             (core_rst_n),
 
     .s_axil_awaddr        (s_axil_awaddr),
@@ -404,6 +401,7 @@ module ultra_sd_top #(
     .CFG_CLK              (cfg_clk),
     .CFG_CLK_HW           (init_clk_div),
     .CFG_PHY              (cfg_phy),
+    .xfer_launch          (xfer_launch),
     .rd_xfer_busy         (),
 
     .STATUS               (status),
@@ -450,7 +448,7 @@ module ultra_sd_top #(
   // 15-16 mantik seviyesi. clk'in Fmax'ini asagi ceken yol buydu ve yukun
   // bindigi taraf da burasi: BLOCKS ile LBA zaten bu alanda, u_reg'de
   // kilitleniyor. O yuzden boru hatti da burada -- L3'e tasinirsa flop
-  // cmd_clk alanina duser ve yuk sadece yer degistirir.
+  // SD saati alanina duser ve yuk sadece yer degistirir.
   //
   // Iki asama, cunku toplama ile karsilastirma iki ayri tasima zinciri:
   //   asama 1: lba + blocks
@@ -483,7 +481,7 @@ module ultra_sd_top #(
   end
 
   // ===========================================================================
-  // L3 -- blok katmani. cmd_clk alaninda: L2 ile ayni saat, L1 ile faz kilitli.
+  // L3 -- blok katmani. sd_clk_core alaninda, yani L2 ve L1 ile AYNI saat.
   // ===========================================================================
   ultra_sd_block #(
     .DATA_W           (DATA_W),
@@ -491,7 +489,7 @@ module ultra_sd_top #(
     .NAC_TIMEOUT_CLK  (NAC_TIMEOUT_CLK),
     .PROG_TIMEOUT_CLK (PROG_TIMEOUT_CLK)
   ) u_block (
-    .clk               (cmd_clk),
+    .clk               (sd_clk_core),
     .rst_n             (core_rst_n),
 
     .go_i              (xfer_go),
@@ -566,7 +564,7 @@ module ultra_sd_top #(
     .CLK_DIV_HS         (CLK_DIV_HS),
     .ACMD41_TIMEOUT_CLK (SD_HZ_INIT)
   ) u_cmd (
-    .cmd_clk         (cmd_clk),
+    .cmd_clk         (sd_clk_core),
     .rst_n           (core_rst_n),
 
     // L3 istek portu
@@ -592,6 +590,12 @@ module ultra_sd_top #(
     // Baslatma merdiveni
     .card_present_i  (card_present),
     .ramp_done_i     (ramp_done),
+
+    // Table 7-1 geri cekilmeleri merdivenin karar anlarina gider: genislik ve
+    // hiz kartla anlasma oldugu icin tek tarafli uygulanamaz (ultra_sd_cmd'in
+    // port yorumuna bak). Yazilim CFG_PHY'yi yazip SOFT_RESET verir.
+    .force_1bit_i    (cfg_phy[CFG_PHY_FORCE_1BIT]),
+    .force_ds_i      (cfg_phy[CFG_PHY_FORCE_DS]),
     .init_busy_o     (init_busy),
     .init_done_o     (init_done),
     .init_err_o      (init_err),
@@ -623,12 +627,13 @@ module ultra_sd_top #(
   );
 
   // ===========================================================================
-  // L1 -- DAT cerceveleme. line_clk alaninda; bus_wide_i ve start_i sistem /
-  // SD saatinden gelen tek-bit kontrollerdir ve senkronizasyonu modulun
-  // ICINDE yapilir (doc/cdc.md 6).
+  // L1 -- DAT cerceveleme. SD saati alaninda; bus_wide_i sistem saatinden
+  // gelen tek-bit kontroldur ve senkronizasyonu modulun ICINDE yapilir
+  // (doc/cdc.md 6). dir_i / start_i artik AYNI saatten gelir (L3 de
+  // sd_clk_core'da kosar), yani o ikisi crossing degil.
   // ===========================================================================
   ultra_sd_line u_line (
-    .line_clk        (line_clk),
+    .line_clk        (sd_clk_core),
     .rst_n           (core_rst_n),
 
     .bus_wide_i      (bus_wide),
@@ -672,14 +677,11 @@ module ultra_sd_top #(
 
     .cfg_phy_i      (cfg_phy),
 
-    // Bolme orani girer, gate'lenmis saatler cikar. Bolucu (clk_controller),
-    // ped mux'u (DCS) ve kanal gate'leri (DQCE) bu modulun icinde.
+    // Bolme orani girer, gate'lenmis TEK saat cikar. Bolucu (clk_controller)
+    // ve gate (DQCE) bu modulun icinde; ped de cekirdek de ayni agdan surulur.
     .clk_div_i      (sd_clk_ratio),
-    .cmd_clk_en_i   (cmd_clk_en),
-    .line_clk_en_i  (line_clk_en),
-    .pad_line_sel_i (pad_line_sel),
-    .cmd_clk_o      (cmd_clk),
-    .line_clk_o     (line_clk),
+    .sd_clk_en_i    (sd_clk_en),
+    .sd_clk_o       (sd_clk_core),
 
     .cmd_out_i      (cmd_out),
     .cmd_oe_i       (cmd_oe),
@@ -699,7 +701,7 @@ module ultra_sd_top #(
   // STATUS'ta BUSY ile birlesmiyor, cunku Table 5-1 BUSY'yi transfere bagliyor.
   /* verilator lint_off UNUSED */
   logic unused_ok;
-  assign unused_ok = ^{init_busy, cfg_phy[CFG_PHY_FORCE_DS]};
+  assign unused_ok = ^{init_busy};
   /* verilator lint_on UNUSED */
 
 endmodule

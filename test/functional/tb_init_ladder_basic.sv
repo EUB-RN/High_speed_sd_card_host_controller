@@ -128,7 +128,10 @@ module tb_init_ladder_basic;
     check(stat_retry_cmd_o == 16'd0, "clean ladder spends no command retry");
 
     card_present_i = 0;
-    @(posedge cmd_clk); #1;
+    // Kart varligi artik iki flopluk senkronizerden geciyor (cdc.md 8), yani
+    // temizlik iki SD cevrimi sonra olur. Bekleme suresi sozlesmenin parcasi:
+    // tek cevrim bekleyip "temizlenmedi" demek senkronizeri hata sayardi.
+    repeat (3) @(posedge cmd_clk); #1;
     check(!init_done_o && rca_o == 0 && card_blk_o == 0, "card removal clears state");
 
     if (failures) begin

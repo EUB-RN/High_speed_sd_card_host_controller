@@ -1,0 +1,273 @@
+--- a/rtl/ultra_sd_line.sv
++++ b/rtl/ultra_sd_line.sv
+@@ -77,7 +77,7 @@
+   localparam int WORD_W     = 32;
+   localparam int XFER_WORDS = XFER_BYTES / 4;
+ 
+-  localparam int WORD_CNT_W = $clog2(XFER_WORDS + 1);
++  localparam int WORD_CNT_W = ((XFER_WORDS > 1) ? $clog2(XFER_WORDS) : 1);
+ 
+   localparam int WIDE_BITS   = 4;
+   localparam int NARROW_BITS = 1;
+@@ -86,7 +86,7 @@
+   // durum token'i beklemesi.
+   localparam int CNT_LIM0 = (WORD_W > CRC16_W) ? WORD_W : CRC16_W;
+   localparam int CNT_LIM  = (CNT_LIM0 > STAT_WAIT_MAX) ? CNT_LIM0 : STAT_WAIT_MAX;
+-  localparam int CNT_W    = $clog2(CNT_LIM + 1);
++  localparam int CNT_W    = $clog2(CNT_LIM);
+ 
+   initial begin
+     if ((XFER_BYTES % 4) != 0) begin
+@@ -95,8 +95,8 @@
+   end
+ 
+   function automatic logic [CNT_W-1:0] groups_per_word(logic wide);
+-    groups_per_word = wide ? CNT_W'(WORD_W / WIDE_BITS)
+-                           : CNT_W'(WORD_W / NARROW_BITS);
++    groups_per_word = wide ? CNT_W'((WORD_W / WIDE_BITS) - 1)
++                           : CNT_W'((WORD_W / NARROW_BITS) - 1);
+   endfunction
+ 
+   function automatic logic [WORD_W-1:0] word_swizzle(logic [WORD_W-1:0] d);
+@@ -123,7 +123,6 @@
+   logic                      dir_q;
+   logic [CNT_W-1:0]          cnt_q;
+   logic [WORD_CNT_W-1:0]     word_q;
+-  logic [WORD_CNT_W-1:0]     xfer_words_q;
+   // start_i / dir_i artik AYNI saatten gelir: L3 (ultra_sd_block) saat
+   // birlestirmesinden sonra bu modulle ayni agda kosuyor. Asagidaki iki
+   // kademe bu yuzden SENKRONIZER DEGIL, bilincli bir boru hatti: L3'un arm
+@@ -140,8 +139,7 @@
+   logic [CRC16_W-1:0]        crc_q [SD_DATA_LANES];
+   logic [CRC16_W-1:0]        crc_d [SD_DATA_LANES];
+ 
+-  logic [WORD_W-2:0]         rx_sh_q;
+-  logic [WORD_W-1:0]         rx_data_q;
++  logic [WORD_W-1:0]         rx_sh_q;
+   logic                      rx_valid_q;
+   logic                      rx_done_q;
+   logic                      rx_crc_ok_q;
+@@ -184,8 +182,8 @@
+   // Tek sayacin tek yorumu: "bu kolun son cevrimi".
+   logic cnt_last;
+   logic block_last;
+-  assign cnt_last   = (cnt_q == CNT_W'(1));
+-  assign block_last = (word_q == (xfer_words_q - WORD_CNT_W'(1)));
++  assign cnt_last   = (cnt_q == '0);
++  assign block_last = (word_q == '0);
+ 
+   // ---------------------------------------------------------------------------
+   // CRC16: hat basina bir ornek. Besleme biti yone gore tek mux.
+@@ -225,7 +223,7 @@
+     if (wide_q) begin
+       rx_sh_next = {rx_sh_q[WORD_W-1-WIDE_BITS:0], dat_in_i[WIDE_BITS-1:0]};
+     end else begin
+-      rx_sh_next = {rx_sh_q, dat_in_i[0]};
++      rx_sh_next = {rx_sh_q[WORD_W-2:0], dat_in_i[0]};
+     end
+   end
+ 
+@@ -237,12 +235,10 @@
+       dir_q        <= 1'b0;
+       cnt_q        <= '0;
+       word_q       <= '0;
+-      xfer_words_q <= WORD_CNT_W'(XFER_WORDS);
+       start_sync_q <= '0;
+       dir_sync_q   <= 1'b0;
+       wide_sync_q  <= '0;
+       rx_sh_q      <= '0;
+-      rx_data_q    <= '0;
+       rx_valid_q   <= 1'b0;
+       rx_done_q    <= 1'b0;
+       rx_crc_ok_q  <= 1'b0;
+@@ -307,7 +303,6 @@
+ 
+             wide_q <= wide_sync_q[1];
+             dir_q  <= dir_sync_q;
+-            word_q <= '0;
+ 
+             // Uzunluk disaridan gelir. Tek kontrol, FSM'i sonsuza kilitleyecek
+             // (0 ya da tasmis) degere karsi: donanim politika uretmez, sadece
+@@ -315,9 +310,9 @@
+             if ((xfer_bytes_i >= 11'd4) &&
+                 (xfer_bytes_i <= 11'(XFER_BYTES)) &&
+                 (xfer_bytes_i[1:0] == 2'b00))
+-              xfer_words_q <= WORD_CNT_W'(xfer_bytes_i >> 2);
++              word_q <= WORD_CNT_W'((xfer_bytes_i >> 2) - 11'd1);
+             else
+-              xfer_words_q <= WORD_CNT_W'(XFER_WORDS);
++              word_q <= WORD_CNT_W'(XFER_WORDS - 1);
+ 
+             for (int i = 0; i < SD_DATA_LANES; i++) begin
+               crc_q[i] <= CRC16_INIT;
+@@ -341,7 +336,7 @@
+           case (seg_q)
+ 
+             SEG_DATA: begin
+-              if (!dir_q) rx_sh_q <= rx_sh_next[WORD_W-2:0];
++              if (!dir_q) rx_sh_q <= rx_sh_next;
+ 
+               if (!cnt_last) begin
+                 cnt_q <= cnt_q - CNT_W'(1);
+@@ -349,14 +344,13 @@
+                 // Kelime siniri: RX kelimeyi teslim eder, TX siradakini ister
+                 // (tx_take_o). Son kelimeden sonra CRC koluna gecilir.
+                 if (!dir_q) begin
+-                  rx_data_q  <= word_swizzle(rx_sh_next);
+                   rx_valid_q <= 1'b1;
+                 end
+                 if (!block_last) begin
+                   cnt_q  <= groups_per_word(wide_q);
+-                  word_q <= word_q + WORD_CNT_W'(1);
++                  word_q <= word_q - WORD_CNT_W'(1);
+                 end else begin
+-                  cnt_q <= CNT_W'(CRC16_W);
++                  cnt_q <= CNT_W'(CRC16_W - 1);
+                   seg_q <= SEG_CRC;
+                 end
+               end
+@@ -377,7 +371,7 @@
+ 
+             default: begin  // SEG_TAIL: stop biti surulurken token beklemesi
+               tx_status_tmo_q <= 1'b0;
+-              cnt_q           <= CNT_W'(STAT_WAIT_MAX);
++              cnt_q           <= CNT_W'(STAT_WAIT_MAX - 1);
+               cell_q          <= CELL_SWAIT;
+             end
+           endcase
+@@ -385,7 +379,7 @@
+ 
+         CELL_SWAIT: begin
+           if (!dat_in_i[0]) begin
+-            cnt_q  <= CNT_W'(3);
++            cnt_q  <= CNT_W'(2);
+             cell_q <= CELL_SREAD;
+           end else if (cnt_last) begin
+             tx_status_tmo_q <= 1'b1;
+@@ -489,7 +483,7 @@
+   assign tx_status_tmo_o = tx_status_tmo_q;
+   assign card_busy_o     = card_busy_q;
+ 
+-  assign rx_data_o   = rx_data_q;
++  assign rx_data_o   = word_swizzle(rx_sh_q);
+   assign rx_valid_o  = rx_valid_q;
+   assign rx_busy_o   = cell_busy && !dir_q;
+   assign rx_done_o   = rx_done_q;
+--- a/rtl/ultra_sd_block.sv
++++ b/rtl/ultra_sd_block.sv
+@@ -108,7 +108,6 @@
+     S_ERROR
+   } step_e;
+ 
+-  typedef enum logic [1:0] { P_ISSUE, P_ACC, P_WAIT } cphase_e;
+ 
+   typedef enum logic [1:0] {
+     POST_NEXT,
+@@ -118,7 +117,7 @@
+   } post_e;
+ 
+   step_e               step_q;
+-  cphase_e             cphase_q;
++  logic                cmd_pending_q;
+   post_e               post_q;
+ 
+   logic [LBA_W-1:0]    lba_q;
+@@ -130,7 +129,7 @@
+   // beklemeden) dat_start_o'yu dusurur.
+   logic [BLOCKS_W-1:0] arm_left_q;
+   logic                rx_busy_q;
+-  logic [BLOCKS_W-1:0] blocks_tot_q;
++  logic                first_block_done_q;
+   logic                dir_q;
+   logic                multi_q;
+   logic [TO_W-1:0]     to_q;
+@@ -172,7 +171,7 @@
+     unique case (step_q)
+       S_PRE_ERASE: begin
+         nx_index = ACMD23_SET_WR_BLK_ERASE_CNT;
+-        nx_arg   = {9'h0, blocks_tot_q[22:0]};
++        nx_arg   = {9'h0, blocks_left_q[22:0]};
+         nx_resp  = RESP_R1;
+         nx_acmd  = 1'b1;
+       end
+@@ -204,7 +203,7 @@
+   assign cmd_step = (step_q == S_PRE_ERASE) || (step_q == S_CMD) ||
+                     (step_q == S_STOP)      || (step_q == S_STATUS);
+ 
+-  assign req_valid_o   = cmd_step && (cphase_q != P_WAIT);
++  assign req_valid_o   = cmd_step && !cmd_pending_q;
+   assign req_index_o   = nx_index;
+   assign req_arg_o     = nx_arg;
+   assign req_resp_o    = nx_resp;
+@@ -225,7 +224,7 @@
+   assign dat_dir_o   = dir_q;
+ 
+   logic cmd_ack, cmd_fail, cmd_ok;
+-  assign cmd_ack  = cmd_step && (cphase_q == P_WAIT) && rsp_valid_i;
++  assign cmd_ack  = cmd_step && cmd_pending_q && rsp_valid_i;
+   assign cmd_fail = cmd_ack &&  rsp_err_i;
+   assign cmd_ok   = cmd_ack && !rsp_err_i;
+ 
+@@ -351,7 +350,7 @@
+                         (step_q == S_WR_DATA);
+   logic gap_active;
+   assign gap_active = in_stream && !dat_active_i && !card_busy_i && multi_q &&
+-                      (blocks_left_q != blocks_tot_q);
++                      first_block_done_q;
+ 
+   always_ff @(posedge clk or negedge rst_n) begin
+     if (!rst_n) begin
+@@ -485,20 +484,21 @@
+     if (!rst_n) begin
+       lba_q         <= '0;
+       blocks_left_q <= '0;
+-      blocks_tot_q  <= '0;
++      first_block_done_q <= 1'b0;
+       dir_q         <= 1'b0;
+       multi_q       <= 1'b0;
+       retry_q       <= '0;
+     end else if (accept_o) begin
+       lba_q         <= lba_i;
+       blocks_left_q <= blocks_i;
+-      blocks_tot_q  <= blocks_i;
++      first_block_done_q <= 1'b0;
+       dir_q         <= dir_i;
+       multi_q       <= start_multi_i;
+       retry_q       <= '0;
+     end else if (rd_block_ok || wr_block_ok) begin
+       lba_q         <= lba_q + LBA_W'(1);
+       blocks_left_q <= blocks_left_q - BLOCKS_W'(1);
++      first_block_done_q <= 1'b1;
+       retry_q       <= '0;
+     end else if (retry_crc) begin
+       retry_q       <= retry_q + RTY_W'(1);
+@@ -538,26 +538,9 @@
+   assign wr_rewind_o = wr_rewind_q;
+ 
+   always_ff @(posedge clk or negedge rst_n) begin
+-    if (!rst_n) begin
+-      cphase_q <= P_ISSUE;
+-    end else if (!cmd_step || cmd_ack || abort_evt) begin
+-      cphase_q <= P_ISSUE;
+-    end else begin
+-      // req_valid_o is high in P_ISSUE and P_ACC alike, and L2 loads on the
+-      // level of it whenever its sender is idle -- so the handshake has to be
+-      // considered done on the FIRST cycle ready is seen, P_ISSUE included.
+-      // Stepping P_ISSUE -> P_ACC unconditionally missed that cycle: L2 loaded
+-      // and sent the command, valid stayed high through P_ACC, and when the
+-      // sender went idle again it loaded the very same request a second time.
+-      // Every command went out twice, which a card answers twice -- and a
+-      // duplicated CMD17 queues a second block that then collides with the
+-      // next write.
+-      unique case (cphase_q)
+-        P_ISSUE: cphase_q <= req_ready_i ? P_WAIT : P_ACC;
+-        P_ACC:   if (req_ready_i) cphase_q <= P_WAIT;
+-        default: ;
+-      endcase
+-    end
++    if (!rst_n) cmd_pending_q <= 1'b0;
++    else if (!cmd_step || cmd_ack || abort_evt) cmd_pending_q <= 1'b0;
++    else if (req_valid_o && req_ready_i) cmd_pending_q <= 1'b1;
+   end
+ 
+ endmodule

@@ -1,0 +1,153 @@
+{
+  "baseline": {
+    "top": {
+      "name": "ultra_sd_top",
+      "Register": "36",
+      "Alu": "53",
+      "Lut": "20",
+      "T_Register": "1289(36)",
+      "T_Alu": "124(53)",
+      "T_Lut": "2122(20)",
+      "T_Bsram": "2(0)",
+      "T_Ssram": "3(0)"
+    },
+    "modules": {
+      "u_block": {
+        "name": "u_block",
+        "Register": "201",
+        "Alu": "24",
+        "Lut": "402",
+        "T_Register": "201(201)",
+        "T_Alu": "24(24)",
+        "T_Lut": "402(402)"
+      },
+      "u_line": {
+        "name": "u_line",
+        "Register": "259",
+        "Lut": "409",
+        "T_Register": "259(259)",
+        "T_Lut": "409(409)"
+      }
+    }
+  },
+  "line_rx": {
+    "top": {
+      "name": "ultra_sd_top",
+      "Register": "36",
+      "Alu": "53",
+      "Lut": "20",
+      "T_Register": "1258(36)",
+      "T_Alu": "124(53)",
+      "T_Lut": "2107(20)",
+      "T_Bsram": "2(0)",
+      "T_Ssram": "3(0)"
+    },
+    "modules": {
+      "u_block": {
+        "name": "u_block",
+        "Register": "201",
+        "Alu": "24",
+        "Lut": "404",
+        "T_Register": "201(201)",
+        "T_Alu": "24(24)",
+        "T_Lut": "404(404)"
+      },
+      "u_line": {
+        "name": "u_line",
+        "Register": "228",
+        "Lut": "380",
+        "T_Register": "228(228)",
+        "T_Lut": "380(380)"
+      }
+    }
+  },
+  "line_counts": {
+    "top": {
+      "name": "ultra_sd_top",
+      "Register": "36",
+      "Alu": "53",
+      "Lut": "22",
+      "T_Register": "1284(36)",
+      "T_Alu": "124(53)",
+      "T_Lut": "2134(22)",
+      "T_Bsram": "2(0)",
+      "T_Ssram": "3(0)"
+    },
+    "modules": {
+      "u_block": {
+        "name": "u_block",
+        "Register": "201",
+        "Alu": "24",
+        "Lut": "413",
+        "T_Register": "201(201)",
+        "T_Alu": "24(24)",
+        "T_Lut": "413(413)"
+      },
+      "u_line": {
+        "name": "u_line",
+        "Register": "254",
+        "Lut": "402",
+        "T_Register": "254(254)",
+        "T_Lut": "402(402)"
+      }
+    }
+  },
+  "block_trim": {
+    "top": {
+      "name": "ultra_sd_top",
+      "Register": "36",
+      "Alu": "53",
+      "Lut": "20",
+      "T_Register": "1265(36)",
+      "T_Alu": "100(53)",
+      "T_Lut": "2127(20)",
+      "T_Bsram": "2(0)",
+      "T_Ssram": "3(0)"
+    },
+    "modules": {
+      "u_block": {
+        "name": "u_block",
+        "Register": "177",
+        "Lut": "405",
+        "T_Register": "177(177)",
+        "T_Lut": "405(405)"
+      },
+      "u_line": {
+        "name": "u_line",
+        "Register": "259",
+        "Lut": "411",
+        "T_Register": "259(259)",
+        "T_Lut": "411(411)"
+      }
+    }
+  },
+  "combined": {
+    "top": {
+      "name": "ultra_sd_top",
+      "Register": "36",
+      "Alu": "53",
+      "Lut": "22",
+      "T_Register": "1229(36)",
+      "T_Alu": "100(53)",
+      "T_Lut": "2102(22)",
+      "T_Bsram": "2(0)",
+      "T_Ssram": "3(0)"
+    },
+    "modules": {
+      "u_block": {
+        "name": "u_block",
+        "Register": "177",
+        "Lut": "402",
+        "T_Register": "177(177)",
+        "T_Lut": "402(402)"
+      },
+      "u_line": {
+        "name": "u_line",
+        "Register": "223",
+        "Lut": "371",
+        "T_Register": "223(223)",
+        "T_Lut": "371(371)"
+      }
+    }
+  }
+}

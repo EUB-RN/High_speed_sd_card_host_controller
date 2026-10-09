@@ -256,7 +256,13 @@ module ultra_sd_block #(
 
   assign rd_block_ok = (step_q == S_RD_DATA) && rx_done_i &&  rx_crc_ok_i;
   assign rd_crc_fail = (step_q == S_RD_DATA) && rx_done_i && !rx_crc_ok_i;
-  assign rd_tmo      = (step_q == S_RD_DATA) && (to_q == '0) && !rx_busy_i;
+  // Nac timeout'u rx_busy_i ile kapilamaz: hat start bitini beklerken (L1
+  // CELL_ARM) rx_busy ZATEN yuksek, yani timeout tam ihtiyac duyuldugu anda
+  // maskeleniyordu ve kart veri surmezse okuma sonsuza asili kaliyordu.
+  // dat_active_i yalnizca YUK kolunda yuksek: veri akarken timeout yok, veri
+  // hic baslamazsa Nac doluyor. Blok sinirinda to_q her rd_block_ok'ta
+  // yeniden yuklendigi icin CRC kolunun 16 cevrimi yanlis tetik uretmez.
+  assign rd_tmo      = (step_q == S_RD_DATA) && (to_q == '0) && !dat_active_i;
 
   logic wr_block_ok, wr_nak, wr_tmo, wr_proto;
   assign wr_block_ok = (step_q == S_WR_DATA) && tx_done_i &&  tx_status_ok_i;

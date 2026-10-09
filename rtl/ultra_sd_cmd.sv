@@ -64,6 +64,21 @@ module ultra_sd_cmd
   // ---- baslatma merdiveni: tetik ve sonuclar ------------------------------
   input  logic                      card_present_i,
   input  logic                      ramp_done_i,
+
+  // ---- Table 7-1 geri cekilme bitleri (CFG_PHY) ----------------------------
+  // Ikisi de MERDIVENIN karar anlarinda tuketiliyor, L1'in girisinde degil.
+  // Sebebi: genislik ve hiz kartla ANLASMADIR. Host tarafini tek basina
+  // daraltmak karti 4-bit'te birakip hatti 1-bit okumak demekti; bu yuzden
+  // force_1bit ACMD6'nin ARGUMANINI degistiriyor, yani kart da 1-bit'e
+  // geciyor ve bus_4bit_o her zaman gercek genisligi soyluyor (R-DEG-5).
+  // force_ds ise CMD6 switch'ini hic yapmiyor: hiz Default Speed'de,
+  // clk_div CLK_DIV_DS'te kaliyor.
+  // Ikisi de merdiven kosarken ornekleniyor, yani yazilim once CFG_PHY'yi
+  // yazar sonra CTRL.SOFT_RESET verir (register dosyasi sys_rst_n ile kurulu,
+  // soft reset CFG_PHY'yi silmez) -- Section 7.4 "ayni bitstream, yalnizca
+  // konfigurasyon degisikligi" prosedurunun tam karsiligi.
+  input  logic                      force_1bit_i,
+  input  logic                      force_ds_i,
   output logic                      init_busy_o,
   output logic                      init_done_o,
   output logic                      init_err_o,
@@ -134,6 +149,30 @@ module ultra_sd_cmd
   init_mode_e  init_mode_q;
   logic        init_owns;
   logic        cmd_idle;
+
+  // ---------------------------------------------------------------------------
+  // clk alanindan gelen tek-bit kontrollerin senkronizeri (cdc.md 6, 8)
+  //
+  // Dordu de system_controller'in / register dosyasinin saatinde uretiliyor ve
+  // burada SD saatinde tuketiliyor. Eskiden HICBIRI senkronize edilmiyordu --
+  // cdc.md satir 8 "iki flop senkronizer" diyordu ama o senkronizer yalnizca
+  // ultra_sd_block'ta vardi, burada yoktu.
+  //
+  // Bedeli yalnizca metastabilite degildi, ZAMANLAMA idi: card_present dogrudan
+  // kart-cikarma temizligini suruyor (rca, card_blk, step_cnt, speed, clk_div,
+  // init_err_code + bir avuc CE), yani genis bir fanout konisinin tepesinde
+  // kombinasyonel duruyordu. STA bunu sys_clk -> sd_clk_core gecisi olarak,
+  // YARIM periyotluk (10.101 ns) pencereyle olcuyor ve en kotu yol -0.867 ns
+  // ile dusuyordu. Senkronizerden sonra ayni koninin tepesinde bu saatte duran
+  // bir flop var: koni degismedi, ama pencere TAM periyoda (20.202 ns) cikti.
+  // ---------------------------------------------------------------------------
+  logic [1:0] pres_sync_q, ramp_sync_q, f1b_sync_q, fds_sync_q;
+
+  logic card_present, ramp_done, force_1bit, force_ds;
+  assign card_present = pres_sync_q[1];
+  assign ramp_done    = ramp_sync_q[1];
+  assign force_1bit   = f1b_sync_q[1];
+  assign force_ds     = fds_sync_q[1];
 
   logic [RESP_LONG_BITS-1:0] rsp_data;
 
@@ -450,6 +489,10 @@ module ultra_sd_cmd
       stat_rty_cmd_q <= '0;
       clr_sync_q     <= 2'b00;
       clr_q          <= 1'b0;
+      pres_sync_q    <= 2'b00;
+      ramp_sync_q    <= 2'b00;
+      f1b_sync_q     <= 2'b00;
+      fds_sync_q     <= 2'b00;
       card_ready_q   <= 1'b0;
       rsp_valid_q    <= 1'b0;
       rsp_err_q      <= 1'b0;
@@ -463,8 +506,12 @@ module ultra_sd_cmd
         crc_q <= crc_nxt;
       end
 
-      clr_sync_q <= {clr_sync_q[0], stat_clear_tgl_i};
-      clr_q      <= clr_sync_q[1];
+      clr_sync_q  <= {clr_sync_q[0],  stat_clear_tgl_i};
+      clr_q       <= clr_sync_q[1];
+      pres_sync_q <= {pres_sync_q[0], card_present_i};
+      ramp_sync_q <= {ramp_sync_q[0], ramp_done_i};
+      f1b_sync_q  <= {f1b_sync_q[0],  force_1bit_i};
+      fds_sync_q  <= {fds_sync_q[0],  force_ds_i};
 
       if (stat_clear) stat_rty_cmd_q <= '0;
 
@@ -553,7 +600,6 @@ module ultra_sd_cmd
             if (r1_chk_q) begin
               card_ready_q <= resp_sh_q[R1_STATUS_LSB + R1_READY_FOR_DATA];
               if (r1_has_err) begin
-
                 err_q     <= ERR_CMD_STATUS;
                 rsp_err_q <= 1'b1;
               end
@@ -569,6 +615,13 @@ module ultra_sd_cmd
             retry_q     <= retry_q + RTY_W'(1);
             gap_next_q  <= GAP_TO_LOAD;
             state_q     <= C_GAP;
+            // Yeniden deneme komutu BASTAN gonderir, yani ACMD ise CMD55
+            // onekini de bastan gonderir. Bu satir olmadan C_EVAL'de dusen
+            // send55_q sifir kalir ve komut CIPLAK tekrarlanir: ACMD6 ->
+            // CMD6 SWITCH_FUNC, ACMD41 -> CMD41. ld_acmd komut boyunca sabit
+            // (sel_init donmus sahibe bakiyor), CMD55'in kendisi dustuyse de
+            // 1 kalir, yani tek satir iki durumu da dogru kuruyor.
+            send55_q    <= ld_acmd;
             // STAT_RETRY: gercekten yeniden denenen her komut, denemeyi
             // yaptiran satirin yaninda. Silme yukarida yazildigi icin
             // burada acikca eleniyor; saturasyonlu.
@@ -651,14 +704,30 @@ module ultra_sd_cmd
               4'd4: rca_q <= rsp_data[39:24];          // CMD3
 
               4'd5: begin                               // CMD9: CSD
-                card_blk_q <= { (rsp_data[69:48] + 22'd1), 10'b0 };
-                speed_q    <= SPEED_DS;
-                clk_div_q  <= CFG_CLK_W'(CLK_DIV_DS);
+                // CSD_STRUCTURE != 1 -> CSD v1.0, yani SDSC. DESTEKLENMIYOR
+                // ve bu yuzden ACIKCA reddediliyor (R-FUNC-5). Desteklemek
+                // ikinci bir kapasite formulu, CMD16 ile blok uzunlugu ve
+                // byte adresleme yolu demekti; bu kadar donanimi 2 GB alti
+                // kartlar icin tasimaya degmez. Reddetmek ise BEDAVA: alan
+                // zaten R2 okuyucusunda yakalaniyor, burada tek karsilastirma.
+                //
+                // Eskiden bu kol yoktu ve asagidaki v2 formulu KOSULSUZ
+                // calisiyordu: SDSC bir kartta kapasite cop cikiyor, CCS=0
+                // oldugu icin byte adresleme seciliyor ve merdiven "basarili"
+                // bitiyordu -- yani kart sessizce yanlis isleniyordu.
+                if (csd_struct_q != 2'b01) begin
+                  init_err_code_q <= ERR_UNSUPPORTED;
+                  init_mode_q     <= INIT_ERR;
+                end else begin
+                  card_blk_q <= { (rsp_data[69:48] + 22'd1), 10'b0 };
+                  speed_q    <= SPEED_DS;
+                  clk_div_q  <= CFG_CLK_W'(CLK_DIV_DS);
+                end
               end
 
               4'd6: begin                               // CMD7
                 if (!SCR_CHECK) begin
-                  scr_4bit_q <= 1'b1;
+                  scr_4bit_q <= !force_1bit;
                   step_cnt   <= 4'd8;                   // SCR'yi atla
                 end
               end
@@ -674,7 +743,8 @@ module ultra_sd_cmd
               4'd8: begin                               // ACMD6
                 bus_4bit_q <= scr_4bit_q;
                 word_cnt_q <= '0;
-                if (!HS_ENABLE) init_mode_q <= INIT_DONE;
+                // force_ds: CMD6 switch'i hic denenmez, merdiven DS'te biter.
+                if (!HS_ENABLE || force_ds) init_mode_q <= INIT_DONE;
               end
 
               4'd9: begin                               // CMD6 -> DAT
@@ -714,7 +784,10 @@ module ultra_sd_cmd
               init_mode_q     <= INIT_ERR;
               state_q         <= C_IDLE;
             end else if (step_cnt == 4'd7) begin
-              scr_4bit_q <= dat_cap_q[2];
+              // scr_4bit_q "4-bit KULLANACAGIZ" demek: hem ACMD6'nin argumani
+              // hem bus_4bit_q bundan turuyor, o yuzden force'u tek yerde,
+              // burada uyguluyoruz -- ikisi hicbir kolda ayrisamaz.
+              scr_4bit_q <= dat_cap_q[2] && !force_1bit;
               step_cnt   <= 4'd8;
               state_q    <= C_IDLE;      // siradaki komut cekilecek
             end else begin
@@ -738,7 +811,7 @@ module ultra_sd_cmd
       end
 
       // ---- merdivenin tetigi: rampa bitti, kart var ------------------------
-      if ((init_mode_q == INIT_IDLE) && ramp_done_i && card_present_i) begin
+      if ((init_mode_q == INIT_IDLE) && ramp_done && card_present) begin
         init_mode_q <= INIT_RUN;
         step_cnt    <= 4'd0;
       end
@@ -746,7 +819,7 @@ module ultra_sd_cmd
       // ---- kart cikarildi: ogrenilen her sey eskidi ------------------------
       // Merdiven hatta sahipse komutu da dusuruyoruz; eskiden iki ayri FSM
       // oldugu icin komut motoru devam eder, merdiven altindan resetlenirdi.
-      if (!card_present_i && (init_mode_q != INIT_IDLE)) begin
+      if (!card_present && (init_mode_q != INIT_IDLE)) begin
         init_mode_q     <= INIT_IDLE;
         step_cnt        <= 4'd0;
         rca_q           <= '0;

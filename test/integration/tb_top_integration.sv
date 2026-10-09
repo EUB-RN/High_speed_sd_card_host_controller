@@ -291,7 +291,7 @@ module tb_top_integration;
     if (timeout >= 2000) begin
       $display("clock-start debug: phase=%0d ramp=%0d raw_cmd_clk=%b divider=%0d",
                dut.u_sysctl.phase_q, dut.u_sysctl.ramp_cnt_q,
-               dut.u_phy.cmd_clk_div, dut.sd_clk_ratio);
+               dut.u_phy.sd_clk_div, dut.sd_clk_ratio);
       $display("tb_top_integration: FAILED (%0d/%0d)", failures, checks);
       $fatal(1);
     end
@@ -303,8 +303,8 @@ module tb_top_integration;
     if (!card_model_done)
       $display("card model debug: commands=%0d sys_phase=%0d ramp=%0d sd_clk=%b raw=%b div=%b init_div=%b sys_rst=%b en=%b ce=%b core_rst=%b init_state=%0d init_phase=%0d cmd_state=%0d err=%0d sd_cd=%b cd_raw=%b cd_count=%0d stable=%b present=%b",
                commands_seen, dut.u_sysctl.phase_q, dut.u_sysctl.ramp_cnt_q,
-               sd_clk, dut.u_phy.cmd_clk_div, dut.sd_clk_ratio,
-               dut.init_clk_div, dut.sys_rst_n, dut.cmd_clk_en, dut.u_phy.cmd_ce_q,
+               sd_clk, dut.u_phy.sd_clk_div, dut.sd_clk_ratio,
+               dut.init_clk_div, dut.sys_rst_n, dut.sd_clk_en, dut.u_phy.ce_q,
                dut.core_rst_n, dut.u_cmd.init_mode_q, dut.u_cmd.init_phase_probe,
                dut.u_cmd.state_q, dut.init_err_code, sd_cd, dut.u_sysctl.cd_raw,
                dut.u_sysctl.cd_cnt_q, dut.u_sysctl.cd_stable_q,

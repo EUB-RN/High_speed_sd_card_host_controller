@@ -18,6 +18,9 @@ module tb_ultra_sd_cmd;
   // alcaktir ve dis istek portu eskisi gibi hatta sahiptir. (rca_i portu yok
   // artik: CMD55 argumani merdivenin kendi rca_q'sundan geliyor.)
   logic card_present_i = 1'b0, ramp_done_i = 1'b0;
+  // Table 7-1 geri cekilme bitleri; bu tb komut motorunu olcuyor,
+  // merdivenin konfigurasyonunu degil, o yuzden ikisi de pasif.
+  logic force_1bit_i = 1'b0, force_ds_i = 1'b0;
   logic init_busy_o, init_done_o, init_err_o;
   err_e init_err_code_o;
   logic dat_rd_start_o;
