@@ -56,7 +56,16 @@ module tb_ultra_sd_cmd;
   task automatic issue(input logic [5:0] index,
                        input logic [31:0] arg,
                        input resp_e response);
-    while (!req_ready_o) @(posedge cmd_clk);
+    begin
+      int t;
+      t = 0;
+      while (!req_ready_o && t < 4000) begin @(posedge cmd_clk); t++; end
+      // Bounded on purpose: req_ready_o is !init_owns && cmd_idle, so a wedged
+      // command FSM holds it low forever. An unbounded wait here spins on a
+      // running clock and the test never reaches its verdict -- no FAILED, no
+      // exit, just a hung job.
+      check(t < 4000, "command port becomes ready for the next request");
+    end
     @(negedge cmd_clk);
     req_index_i = index; req_arg_i = arg; req_resp_i = response;
     req_is_acmd_i = 0; req_valid_i = 1;
@@ -106,5 +115,14 @@ module tb_ultra_sd_cmd;
     end
     $display("tb_ultra_sd_cmd: PASSED (%0d checks)", checks);
     $finish;
+  end
+
+  // The watchdog every other testbench in the suite has, and this one did not:
+  // without it a hang here produces no verdict at all, and `make` has no
+  // timeout of its own to turn that into a failure.
+  initial begin
+    #2_000_000;
+    $display("tb_ultra_sd_cmd: FAILED (timeout)");
+    $fatal(1, "tb_ultra_sd_cmd timeout");
   end
 endmodule

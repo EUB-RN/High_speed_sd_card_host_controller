@@ -87,7 +87,45 @@ module bench_core
   // for a 99 MHz system clock. It is a parameter rather than a localparam only
   // so that simulation can leave out the 400 kHz point, which costs more
   // simulated time than the whole rest of the sequence put together.
-  parameter logic [5*8-1:0] DIV_TABLE = {8'd248, 8'd16, 8'd8, 8'd4, 8'd2}
+  parameter logic [5*8-1:0] DIV_TABLE = {8'd248, 8'd16, 8'd8, 8'd4, 8'd2},
+
+  // ---- which suite this build runs ----------------------------------------
+  // 0 = SUITE_TIER, the graded measurement: phase scan, precondition, RUNS x
+  //     (64 MB write + verified read), characterisation sweep, latency. This is
+  //     the run every reported figure comes from, and it is the default.
+  // 1 = SUITE_TIMING, the sampling-phase margin matrix below.
+  //
+  // A build-time parameter rather than a switch on the board: bench.cst assigns
+  // no button, and that file's own rule is that a pin traces to Table 2-2 or to
+  // a pin_check run on hardware -- inventing one here would be the only
+  // unverified pad in the design after uart_tx. bench_defines.sv can override
+  // the default with `define BENCH_SUITE, the same way it turns the debug port
+  // on, and simulation passes it as a parameter.
+  parameter int SUITE         = 0,
+
+  // Payload per matrix cell, in blocks. Small on purpose: a wrong sampling
+  // phase corrupts the very first group it samples, so volume buys nothing here
+  // and the matrix is 5 x 16 cells.
+  parameter int TIMING_BLOCKS = 8,
+
+  // Highest phase the matrix tries. SAMPLE_PHASE is 4 bits (CFG_PHY_PHASE_W),
+  // and at divisor d only d/2 phases are distinct -- at divisor 2 there are two
+  // and the rest alias onto them, which is itself visible in the mask.
+  parameter int TIMING_PHASE_MAX = 15,
+
+  // Payload per SUITE_EDGE case that is not itself a shape case. Small: these
+  // cases are about SHAPE and CONTENT, not volume -- a pattern that breaks the
+  // datapath breaks it in the first block.
+  parameter int EDGE_BLOCKS   = 4,
+
+  // SUITE_CTRL: payload per case. Long enough that there is a middle to
+  // interrupt -- an abort that lands after the last beat tests nothing.
+  parameter int CTRL_BLOCKS   = 8,
+
+  // SUITE_SOAK: how many verified write/read pairs, and how big. R-MEAS-5 wants
+  // a 30-minute run on the board; in simulation this is a handful.
+  parameter int SOAK_ITERS    = 64,
+  parameter int SOAK_BLOCKS   = 8
 ) (
   input  logic        clk,
   input  logic        rst_n,
@@ -143,8 +181,40 @@ module bench_core
   localparam int NDIV            = 5;
   localparam int CALC_BASE       = 8;                 // scalar figures first
   localparam int CALC_STEPS      = CALC_BASE + 2 * NDIV;
-  localparam int FIELD_BASE      = 38;
+  // 38 scalar fields, then SUITE at 38, then four per-divisor groups. SUITE
+  // goes after every existing scalar so no index below it moves: the report
+  // decoder in test/integration/tb_bench_flow.sv names those by position.
+  localparam int FIELD_BASE      = 39;
   localparam int NFIELDS         = FIELD_BASE + 4 * NDIV;
+
+  localparam int SUITE_TIER      = 0;
+  localparam int SUITE_TIMING    = 1;
+  localparam int SUITE_EDGE      = 2;
+  localparam int SUITE_CTRL      = 3;
+  localparam int SUITE_SOAK      = 4;
+
+  // ---- SUITE_EDGE: payload patterns ----------------------------------------
+  // The LFSR is the right generator for a 64 MB run and the wrong one for
+  // finding a stuck datapath: every word differs from every other, so a lane
+  // that is stuck, swapped or skewed shows up as noise and cannot be told from
+  // any other corruption. These patterns each fail in a way that names itself.
+  //
+  //   ZERO  CRC16 of an all-zero block is zero, so a CRC path that is stuck at
+  //         zero PASSES this one and fails every other: it is the control.
+  //   ONES  the opposite rail, and the one that holds every lane high through
+  //         a whole block.
+  //   AA55  alternating bits within a word and between words.
+  //   WALK  one bit set, walking: a lane that is shorted to its neighbour puts
+  //         the bit in two places and a lane that is stuck loses it entirely.
+  //   SSO   all lanes switch together on every beat, which is the worst case
+  //         for simultaneous-switching noise and for a sampling phase that is
+  //         near its edge.
+  localparam int PAT_LFSR = 0;
+  localparam int PAT_ZERO = 1;
+  localparam int PAT_ONES = 2;
+  localparam int PAT_AA55 = 3;
+  localparam int PAT_WALK = 4;
+  localparam int PAT_SSO  = 5;
 
   // R-FUNC-7 allows 500 ms for init, so wait 750 before calling the card dead.
   // R-FUNC-7 puts the init budget at 500 ms, and 750 ms used to be this
@@ -308,7 +378,45 @@ module bench_core
   assign x_streaming = (xst_q == X_RUN);
 
   assign wr_tvalid_o = x_streaming &&  x_dir && (beats_left_q != '0);
-  assign wr_tdata_o  = wr_expect;
+  // One function for both directions, so a pattern cannot be written one way and
+  // expected another -- that mistake looks exactly like a card fault.
+  function automatic logic [31:0] pat_word(input int pat,
+                                           input logic [31:0] beat,
+                                           input logic [31:0] lfsr);
+    case (pat)
+      PAT_ZERO: pat_word = 32'h0000_0000;
+      PAT_ONES: pat_word = 32'hFFFF_FFFF;
+      PAT_AA55: pat_word = beat[0] ? 32'h5555_5555 : 32'hAAAA_AAAA;
+      PAT_WALK: pat_word = 32'h1 << beat[4:0];
+      PAT_SSO:  pat_word = beat[0] ? 32'h0000_0000 : 32'hFFFF_FFFF;
+      default:  pat_word = lfsr;
+    endcase
+  endfunction
+
+  // Driven by the case table, not a register: the pattern has to be right on the
+  // very first beat, and a register written in the state before the start is one
+  // more ordering rule to get wrong.
+  logic [2:0]  pat_q;
+  logic [31:0] wr_beat_q, rd_beat_q;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      wr_beat_q <= '0;
+      rd_beat_q <= '0;
+    end else if (lfsr_reload) begin
+      wr_beat_q <= '0;
+      rd_beat_q <= '0;
+    end else begin
+      if (wr_step) wr_beat_q <= wr_beat_q + 32'd1;
+      if (rd_step) rd_beat_q <= rd_beat_q + 32'd1;
+    end
+  end
+
+  logic [31:0] wr_word, rd_word;
+  assign wr_word = pat_word(int'(pat_q), wr_beat_q, wr_expect);
+  assign rd_word = pat_word(int'(pat_q), rd_beat_q, rd_expect);
+
+  assign wr_tdata_o  = wr_word;
   assign wr_tlast_o  = wr_tvalid_o && (beats_left_q == 32'd1);
   // Do not consume committed FIFO data while the START write response is still
   // returning.  Those beats belong to this request but X_RUN has not loaded
@@ -395,7 +503,7 @@ module bench_core
               ttf_q      <= el_sys_q;
               ttf_seen_q <= 1'b1;
             end
-            if (rd_step && (rd_tdata_i != rd_expect)) mism_q <= mism_q + 32'd1;
+            if (rd_step && (rd_tdata_i != rd_word)) mism_q <= mism_q + 32'd1;
             // tlast must be high on exactly the beat the bench knows is last.
             if (rd_step && (rd_tlast_i != (beats_left_q == 32'd1)))
               tlast_err_q <= tlast_err_q + 32'd1;
@@ -504,7 +612,23 @@ module bench_core
     // o noktada saat hedef bolene oturmus ve kart isinmis olur, yani olculen
     // sey gercekten tek bir istegin maliyeti.
     S_LAT_WR,
-    S_LAT_RD
+    S_LAT_RD,
+    // Sona eklendi, yukaridaki her durum FAILFROM numarasini korur.
+    // SUITE_TIMING'in uc durumu: hucreyi kur, yaz, dogrulayarak oku.
+    S_TM_SET,
+    S_TM_WR,
+    S_TM_RD,
+    S_TM_NEXT,
+    // SUITE_EDGE: kur, yaz, dogrulayarak oku, sonraki vaka.
+    S_EG_SET,
+    S_EG_WR,
+    S_EG_RD,
+    S_EG_WAIT,
+    S_EG_NEXT,
+    // SUITE_SOAK: ayni cifti tekrar tekrar, sayac capraz kontroluyle.
+    S_SK_WR,
+    S_SK_RD,
+    S_SK_NEXT
   } sstate_e;
 
   sstate_e     sst_q;
@@ -519,6 +643,226 @@ module bench_core
   // Is there another SAMPLE_PHASE left to try?
   logic        next_phase;
   assign next_phase = (phase_q != 4'(PHASE_MAX));
+
+  // ---- SUITE_TIMING: the sampling-phase margin matrix -----------------------
+  // One 16-bit mask per divisor, bit p set when phase p carried a short write
+  // and a verified read-back with no error and no mismatch.
+  //
+  // The mask is the measurement, not the pass. A column that works at exactly
+  // one phase is a column one PVT corner away from not working, and the tier
+  // run cannot tell you that: its scan stops at the first phase that verifies,
+  // so a one-phase-wide window and a six-phase-wide window look identical to it.
+  //
+  // The matrix is divisor x phase and NOT divisor x phase x bus width, because
+  // bus width is not reachable from the register map: CFG_PHY.FORCE_1BIT only
+  // narrows the HOST (system_controller.sv, bus_wide_q <= bus_4bit_i &
+  // ~force_1bit_i) while the card's width is whatever the init ladder's ACMD6
+  // left it at. Forcing 1-bit here would desynchronise the two and fail every
+  // cell for a reason that has nothing to do with timing.
+  logic [15:0] tm_mask_q [NDIV];
+
+  // ---- SUITE_CTRL: interrupting a transfer in flight ------------------------
+  // ct_arm_q says a poke is wanted and at which point; the x_ engine fires it
+  // when the stream reaches that point and clears it when the write is answered.
+  logic        ct_arm_q, ct_req_q;
+  logic [31:0] ct_at_q, ct_wdata_q;
+
+  // ---- SUITE_SOAK: the same pair, over and over -----------------------------
+  // Throughput is not the question here; drift is. A card that passes once and a
+  // card that passes ten thousand times are the same number on the tier run, and
+  // that difference is the whole of R-MEAS-5. Five checkpoints along the way, so
+  // the report shows WHEN something started going wrong rather than only that it
+  // did.
+  //
+  // SK_XCHK is the R-IF-11 cross-check: the bench counts SD cycles itself, off
+  // the pad, while the core counts payload cycles in its own clock domain. Their
+  // difference is the non-payload time, which the core reports separately as
+  // STAT_GAP. If those two disagree, one of the counters is on the wrong clock
+  // and every efficiency figure in the tier report is wrong with it.
+  logic [31:0] sk_iter_q, sk_mism_q, sk_retry_q;
+  logic [2:0]  sk_ck_q;
+  logic [31:0] sk_iter_a  [NDIV];
+  logic [31:0] sk_mism_a  [NDIV];
+  logic [31:0] sk_retry_a [NDIV];
+  logic [31:0] sk_xchk_a  [NDIV];
+
+  // ---- SUITE_EDGE: the case table -----------------------------------------
+  // Twenty cases in four named groups of five, which is exactly the shape the
+  // report already has: four per-divisor columns of NDIV rows.
+  //
+  // EVERY WRITE STAYS INSIDE THE REGION THE TIER RUN ALREADY OVERWRITES,
+  // [LBA_BASE, LBA_BASE + EDGE_BLOCKS]. The boundary cases that would otherwise
+  // want the first or the last sector are READS: sector 0 carries the partition
+  // table and the last sector is as likely to be someone's data, and a bench
+  // that quietly destroys either is not a bench anyone runs twice.
+  localparam int EDGE_CASES = 4 * NDIV;
+
+  logic [4:0]  eg_case_q;
+  logic [31:0] eg_stat_q [EDGE_CASES];   // {8'h0, err, mism saturated, ok}
+
+  logic [23:0] eg_blocks;
+  logic [31:0] eg_lba;
+  logic [7:0]  eg_err_exp;
+  logic        eg_verify;    // compare the read-back against the generator
+  logic        eg_rdonly;    // no write first: the content is not ours
+  logic        eg_poke;      // SUITE_CTRL: interrupt this transfer
+  logic [31:0] eg_poke_at;   // beats_left at which to interrupt
+  logic [31:0] eg_poke_cmd;  // what to write to CTRL
+  logic        eg_reinit;    // the poke resets the core: wait for the card again
+
+  always_comb begin
+    eg_poke     = 1'b0;
+    eg_poke_at  = 32'd0;
+    eg_poke_cmd = 32'(1 << CTRL_ABORT_BIT);
+    eg_reinit   = 1'b0;
+    // Defaults: a verified write + read-back of EDGE_BLOCKS at the base.
+    pat_q      = 3'(PAT_LFSR);
+    eg_blocks  = 24'(EDGE_BLOCKS);
+    eg_lba     = 32'(LBA_BASE);
+    eg_err_exp = 8'(ERR_OK);
+    eg_verify  = 1'b1;
+    eg_rdonly  = 1'b0;
+
+    case (eg_case_q)
+      // ---- group 0: transfer shape ---------------------------------------
+      // One block is CMD17/CMD24 and no CMD12; two is the shortest multi-block;
+      // three and seven are odd counts, which is where an off-by-one in the
+      // block counter or the FIFO's block-granular commit shows up.
+      5'd0:  eg_blocks = 24'd1;
+      5'd1:  eg_blocks = 24'd2;
+      5'd2:  eg_blocks = 24'd3;
+      5'd3:  eg_blocks = 24'd7;
+      5'd4:  eg_blocks = 24'(EDGE_BLOCKS);
+
+      // ---- group 1: payload pattern ---------------------------------------
+      5'd5:  pat_q = 3'(PAT_ZERO);
+      5'd6:  pat_q = 3'(PAT_ONES);
+      5'd7:  pat_q = 3'(PAT_AA55);
+      5'd8:  pat_q = 3'(PAT_WALK);
+      5'd9:  pat_q = 3'(PAT_SSO);
+
+      // ---- group 2: arguments that must be REFUSED -------------------------
+      // The core checks these before it issues anything (ultra_sd_block's
+      // start_arg_err_q), so the right answer is a specific error code and no
+      // bus activity at all -- not a transfer that fails later.
+      5'd10: begin eg_blocks = 24'd0; eg_err_exp = 8'(ERR_PROTOCOL); eg_verify = 1'b0; end
+      5'd11: begin eg_lba = cardblk_q - 32'd1; eg_blocks = 24'd2;
+                   eg_err_exp = 8'(ERR_RANGE); eg_verify = 1'b0; end
+      5'd12: begin eg_lba = cardblk_q; eg_blocks = 24'd1;
+                   eg_err_exp = 8'(ERR_RANGE); eg_verify = 1'b0; end
+      5'd13: begin eg_lba = cardblk_q + 32'd16; eg_blocks = 24'd1;
+                   eg_err_exp = 8'(ERR_RANGE); eg_verify = 1'b0; end
+      5'd14: begin eg_blocks = 24'd0; eg_err_exp = 8'(ERR_PROTOCOL);
+                   eg_verify = 1'b0; eg_rdonly = 1'b1; end
+
+      // ---- group 3: boundaries, and getting back to work -------------------
+      5'd15: begin eg_lba = cardblk_q - 32'd1; eg_blocks = 24'd1;
+                   eg_verify = 1'b0; eg_rdonly = 1'b1; end   // last sector, read only
+      5'd16: begin eg_blocks = 24'd1; eg_verify = 1'b0; eg_rdonly = 1'b1; end
+      5'd17: begin eg_lba = 32'(LBA_BASE) + 32'(EDGE_BLOCKS); eg_blocks = 24'd1; end
+      // After four refusals in a row: the refusals must leave nothing behind.
+      5'd18: ;
+      5'd19: pat_q = 3'(PAT_SSO);
+      default: ;
+    endcase
+
+    // ---- SUITE_CTRL overrides the table above -----------------------------
+    // Recovery, not throughput: what the core does when a transfer is taken away
+    // from it halfway through, and whether it is still usable afterwards. The
+    // answer that matters is always the NEXT case, which is why every group ends
+    // with ordinary verified work.
+    if (SUITE == SUITE_CTRL) begin
+      pat_q      = 3'(PAT_LFSR);
+      eg_blocks  = 24'(CTRL_BLOCKS);
+      eg_lba     = 32'(LBA_BASE);
+      eg_err_exp = 8'(ERR_OK);
+      eg_verify  = 1'b1;
+      eg_rdonly  = 1'b0;
+
+      case (eg_case_q)
+        // ---- group 0: CTRL.ABORT in flight --------------------------------
+        // Aborting with the card still present is an orderly stop, not a
+        // failure: ultra_sd_block takes POST_DONE, closes with CMD12 and
+        // reports DONE with no error. So the expected answer is ERR_OK and a
+        // transfer that ENDS -- the data is forfeit, which is why none of these
+        // verify.
+        5'd0: begin eg_poke = 1'b1; eg_verify = 1'b0;
+                    eg_poke_at = 32'(CTRL_BLOCKS) * 32'(BEATS_PER_BLOCK) / 2; end
+        5'd1: begin eg_poke = 1'b1; eg_verify = 1'b0; eg_rdonly = 1'b1;
+                    eg_poke_at = 32'(CTRL_BLOCKS) * 32'(BEATS_PER_BLOCK) / 2; end
+        5'd2: begin eg_poke = 1'b1; eg_verify = 1'b0;
+                    eg_poke_at = 32'(CTRL_BLOCKS) * 32'(BEATS_PER_BLOCK) - 32'd4; end
+        5'd3: begin eg_poke = 1'b1; eg_verify = 1'b0; eg_rdonly = 1'b1;
+                    eg_poke_at = 32'd4; end
+        5'd4: ;   // ordinary work again: this is the real check on the four above
+
+        // ---- group 1: CTRL.SOFT_RESET in flight ---------------------------
+        // The synchronous equivalent of rst_n: the phase FSM goes back to
+        // SYS_RESET and the whole identification ladder runs again. The case
+        // passes if the core comes back at all, so it waits for CARD_READY
+        // rather than assuming a timing.
+        5'd5: begin eg_poke = 1'b1; eg_verify = 1'b0; eg_reinit = 1'b1;
+                    eg_poke_cmd = 32'(1 << CTRL_SOFT_RESET_BIT);
+                    eg_poke_at = 32'(CTRL_BLOCKS) * 32'(BEATS_PER_BLOCK) / 2; end
+        5'd6, 5'd7, 5'd8, 5'd9: ;   // and back to work
+
+        // ---- group 2: back to back, no gap --------------------------------
+        5'd10, 5'd11, 5'd12, 5'd13, 5'd14: ;
+
+        // ---- group 3: direction flipping ----------------------------------
+        // Every case here is a write followed by its read-back, so the bus turns
+        // around twice per case; the odd rows start from a read instead, which
+        // puts two reads back to back across the case boundary.
+        5'd15, 5'd17, 5'd19: ;
+        5'd16, 5'd18: eg_rdonly = 1'b1;
+        default: ;
+      endcase
+    end
+  end
+
+  // Widest run of set bits in a mask, and the phase at its centre -- the phase
+  // a driver should pick, as far from either edge of the window as it gets.
+  function automatic logic [7:0] tm_window(input logic [15:0] mask);
+    logic [7:0] run, best;
+    begin
+      run  = 8'd0;
+      best = 8'd0;
+      for (int i = 0; i < 16; i++) begin
+        if (mask[i]) begin
+          run = run + 8'd1;
+          if (run > best) best = run;
+        end else begin
+          run = 8'd0;
+        end
+      end
+      tm_window = best;
+    end
+  endfunction
+
+  function automatic logic [7:0] tm_best_phase(input logic [15:0] mask);
+    logic [7:0] run, best;
+    logic [7:0] end_of_best;
+    begin
+      run         = 8'd0;
+      best        = 8'd0;
+      end_of_best = 8'd0;
+      for (int i = 0; i < 16; i++) begin
+        if (mask[i]) begin
+          run = run + 8'd1;
+          if (run > best) begin
+            best        = run;
+            end_of_best = 8'(i);
+          end
+        end else begin
+          run = 8'd0;
+        end
+      end
+      // No phase worked: say so rather than naming phase 0, which is a real
+      // phase and would read as a result.
+      tm_best_phase = (best == 8'd0) ? 8'hFF
+                                     : (end_of_best - ((best - 8'd1) / 8'd2));
+    end
+  endfunction
 
   // Worst and best elapsed counts. Worst elapsed = lowest rate = the graded one.
   logic [31:0] rd_cyc_min_q, rd_cyc_max_q, wr_cyc_min_q, wr_cyc_max_q;
@@ -539,6 +883,26 @@ module bench_core
   // olarak kartin programlama suresini olcuyor, bizimkini degil.
   logic        lat_rd_2nd_q;
 
+  // Elapsed system cycles of one CHAR_BLOCKS transfer per divisor point, which
+  // is what CH_RDx10 / CH_WRx10 are computed from. They are TRANSFER rates, not
+  // steady-state payload rates, and the difference is not small: a transfer
+  // carries a fixed per-transfer cost -- the command, the card's access
+  // latency, the closing CMD12 and the programming drain S_BUSY waits out --
+  // and CHAR_BLOCKS is only 512, so that cost is 38% of the read number.
+  // It is why CH_RDx10 reads 1200 where the 131072-block run reports 1831 on
+  // the same path: amortisation, not a slower core.
+  //
+  // The sweep separates the two by itself, because the fixed part does not move
+  // with the divisor while the payload part doubles with it. Take the
+  // difference between two adjacent points: that increment IS the payload time
+  // of the faster point, and the rest of its total is the fixed cost. On the
+  // run in reports/bench_live_final.txt the increments come out at 10.83 and
+  // 21.63 ms (a ratio of 1.998, so the model holds), giving
+  //   read : 193.7 Mbit/s payload + 6.65 ms per transfer
+  //   write: ~line rate  payload  + 4.03 ms per transfer
+  // Both directions carry it, so it is not one direction's debt to the other.
+  // Quote RD_Mbx10 / WR_Mbx10 for throughput; quote these for what a 256 KB
+  // request costs end to end.
   logic [31:0] char_rd_cyc_q [NDIV];
   logic [31:0] char_wr_cyc_q [NDIV];
   // The core's own STAT_GAP for each characterisation read: total SD cycles
@@ -673,25 +1037,67 @@ module bench_core
       8'd35: begin rep_label = "RD1_TTF "; rep_value = lat_rd_ttf_q;             end
       8'd36: begin rep_label = "WR1_CYC "; rep_value = lat_wr_cyc_q;             end
       8'd37: begin rep_label = "WR1_BSY "; rep_value = lat_wr_bsy_q;             end
+      // Which suite produced everything above and below it. Printed because the
+      // two suites leave each other's fields at their reset values, and a log
+      // without this line cannot be told apart from a run that failed early.
+      8'd38: begin rep_label = "SUITE   "; rep_value = 32'(SUITE);               end
       default: begin
-        // Characterisation rows: the divisor, then its read rate, then its write
-        // rate, one group after another.
+        // Four per-divisor groups. SUITE_TIER prints the characterisation
+        // sweep; SUITE_TIMING prints the phase margin matrix in the same slots,
+        // so the field COUNT does not move between suites and one decoder reads
+        // both.
+        //
+        //   TM_MASK  bit p set = phase p carried a verified write + read-back
+        //   TM_WIN   widest run of set bits: the margin, in phases
+        //   TM_BEST  phase at the centre of that run, 255 = nothing worked
+        // SUITE_EDGE packs each case into one word: {8'h0, error code,
+        // mismatched beats saturated at 255, 1 = the case behaved as specified}.
+        // The four columns are the four groups of the case table, in order.
         if (int'(rep_idx) < FIELD_BASE + NDIV) begin
           ch_row    = int'(rep_idx) - FIELD_BASE;
-          rep_label = "CH_DIV  ";
-          rep_value = 32'(DIV_TABLE[ch_row*8 +: 8]);
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_DIV  "
+                    : (SUITE == SUITE_EDGE)   ? "EG_SHAPE"
+                    : (SUITE == SUITE_CTRL)   ? "CT_ABORT"
+                    : (SUITE == SUITE_SOAK)   ? "SK_ITER " : "CH_DIV  ";
+          rep_value = (SUITE == SUITE_EDGE || SUITE == SUITE_CTRL)
+                        ? eg_stat_q[ch_row]
+                    : (SUITE == SUITE_SOAK) ? sk_iter_a[ch_row]
+                                            : 32'(DIV_TABLE[ch_row*8 +: 8]);
         end else if (int'(rep_idx) < FIELD_BASE + 2 * NDIV) begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + NDIV);
-          rep_label = "CH_RDx10";
-          rep_value = char_rd_mbps_q[ch_row];
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_MASK "
+                    : (SUITE == SUITE_EDGE)   ? "EG_PATRN"
+                    : (SUITE == SUITE_CTRL)   ? "CT_RESET"
+                    : (SUITE == SUITE_SOAK)   ? "SK_MISM " : "CH_RDx10";
+          rep_value = (SUITE == SUITE_TIMING) ? 32'(tm_mask_q[ch_row])
+                    : (SUITE == SUITE_EDGE || SUITE == SUITE_CTRL)
+                        ? eg_stat_q[NDIV + ch_row]
+                    : (SUITE == SUITE_SOAK) ? sk_mism_a[ch_row]
+                                              : char_rd_mbps_q[ch_row];
         end else if (int'(rep_idx) < FIELD_BASE + 3 * NDIV) begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + 2 * NDIV);
-          rep_label = "CH_WRx10";
-          rep_value = char_wr_mbps_q[ch_row];
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_WIN  "
+                    : (SUITE == SUITE_EDGE)   ? "EG_NEG  "
+                    : (SUITE == SUITE_CTRL)   ? "CT_B2B  "
+                    : (SUITE == SUITE_SOAK)   ? "SK_RETRY" : "CH_WRx10";
+          rep_value = (SUITE == SUITE_TIMING)
+                        ? 32'(tm_window(tm_mask_q[ch_row]))
+                    : (SUITE == SUITE_EDGE || SUITE == SUITE_CTRL)
+                        ? eg_stat_q[2*NDIV + ch_row]
+                    : (SUITE == SUITE_SOAK) ? sk_retry_a[ch_row]
+                        : char_wr_mbps_q[ch_row];
         end else begin
           ch_row    = int'(rep_idx) - (FIELD_BASE + 3 * NDIV);
-          rep_label = "CH_GAP  ";
-          rep_value = char_gap_q[ch_row];
+          rep_label = (SUITE == SUITE_TIMING) ? "TM_BEST "
+                    : (SUITE == SUITE_EDGE)   ? "EG_BOUND"
+                    : (SUITE == SUITE_CTRL)   ? "CT_FLIP "
+                    : (SUITE == SUITE_SOAK)   ? "SK_XCHK " : "CH_GAP  ";
+          rep_value = (SUITE == SUITE_TIMING)
+                        ? 32'(tm_best_phase(tm_mask_q[ch_row]))
+                    : (SUITE == SUITE_EDGE || SUITE == SUITE_CTRL)
+                        ? eg_stat_q[3*NDIV + ch_row]
+                    : (SUITE == SUITE_SOAK) ? sk_xchk_a[ch_row]
+                        : char_gap_q[ch_row];
         end
       end
     endcase
@@ -743,6 +1149,15 @@ module bench_core
           rq_addr  = REG_CTRL;
           rq_wdata = 32'(1 << CTRL_START_BIT);
         end
+        // SUITE_CTRL poking CTRL while the stream is running. X_RUN issues no
+        // request of its own, so the bus is free and the poke costs the
+        // transfer nothing it would not otherwise pay.
+        X_RUN: if (ct_req_q) begin
+          rq_valid = 1'b1;
+          rq_we    = 1'b1;
+          rq_addr  = REG_CTRL;
+          rq_wdata = ct_wdata_q;
+        end
         X_POLL: begin
           rq_valid = 1'b1;
           rq_addr  = REG_STATUS;
@@ -761,12 +1176,13 @@ module bench_core
           // Outside a transfer the outer FSM owns the bus.
           case (sst_q)
             S_PROBE_VER: begin rq_valid = 1'b1; rq_addr = REG_VERSION; end
-            S_INIT_WAIT: begin rq_valid = 1'b1; rq_addr = REG_STATUS; end
+            S_INIT_WAIT,
+            S_EG_WAIT:   begin rq_valid = 1'b1; rq_addr = REG_STATUS; end
             S_READ_INFO: begin
               rq_valid = 1'b1;
               rq_addr  = info_step_q ? REG_CARD_BLK : REG_VERSION;
             end
-            S_SET_CFG, S_CHAR_SET: begin
+            S_SET_CFG, S_CHAR_SET, S_TM_SET: begin
               rq_valid = 1'b1;
               rq_we    = 1'b1;
               case (cfg_step_q)
@@ -1042,11 +1458,36 @@ module bench_core
         char_gap_q[i]     <= '0;
         char_rd_mbps_q[i] <= '0;
         char_wr_mbps_q[i] <= '0;
+        tm_mask_q[i]      <= '0;
+      end
+      eg_case_q  <= '0;
+      ct_arm_q   <= 1'b0;
+      ct_req_q   <= 1'b0;
+      ct_at_q    <= '0;
+      ct_wdata_q <= '0;
+      sk_iter_q  <= '0;
+      sk_mism_q  <= '0;
+      sk_retry_q <= '0;
+      sk_ck_q    <= '0;
+      for (int i = 0; i < EDGE_CASES; i++) eg_stat_q[i] <= '0;
+      for (int i = 0; i < NDIV; i++) begin
+        sk_iter_a[i]  <= '0;
+        sk_mism_a[i]  <= '0;
+        sk_retry_a[i] <= '0;
+        sk_xchk_a[i]  <= '0;
       end
     end else begin
       x_start   <= 1'b0;
       rep_start <= 1'b0;
       div_start <= 1'b0;
+
+      // Fire the armed poke once the stream has reached the chosen point, and
+      // retire it when the register write is answered.
+      if ((xst_q == X_RUN) && ct_arm_q && (beats_left_q <= ct_at_q)) begin
+        ct_arm_q <= 1'b0;
+        ct_req_q <= 1'b1;
+      end
+      if (ct_req_q && rsp_valid) ct_req_q <= 1'b0;
 
       case (sst_q)
         // ---- 0. is the register bus alive at all? -------------------------
@@ -1090,7 +1531,18 @@ module bench_core
               cardblk_q  <= rsp_rdata;
               phase_q    <= '0;
               cfg_step_q <= '0;
-              sst_q      <= S_SET_CFG;
+              div_idx_q  <= '0;
+              if (SUITE == SUITE_SOAK) begin
+                x_dir    <= 1'b1;
+                x_lba    <= 32'(LBA_BASE);
+                x_blocks <= 24'(SOAK_BLOCKS);
+                x_start  <= 1'b1;
+              end
+              sst_q      <= (SUITE == SUITE_TIMING) ? S_TM_SET
+                          : (SUITE == SUITE_EDGE)   ? S_EG_SET
+                          : (SUITE == SUITE_CTRL)   ? S_EG_SET
+                          : (SUITE == SUITE_SOAK)   ? S_SK_WR
+                                                    : S_SET_CFG;
             end
           end
         end
@@ -1316,6 +1768,210 @@ module bench_core
         // One divider stepped through the formulas of Figure 12-2. The operands
         // are selected by calc_q in the block above; here we only start it and
         // file the answer.
+        // ---- SUITE_TIMING: one cell per (divisor, phase) -------------------
+        // Writes before it reads for the same reason the tier run's scan does:
+        // nothing has put LFSR data on the card yet, so a read-only cell would
+        // compare the card's previous contents against the generator and fail
+        // at every phase. The write side is not free of the phase either -- the
+        // card samples our data, but the CRC status token it answers with comes
+        // back on DAT0 and we have to sample THAT correctly to know the block
+        // landed, so a bad phase can fail in either direction.
+        S_TM_SET: begin
+          if (rsp_valid) begin
+            if (cfg_step_q == 2'd2) begin
+              cfg_step_q <= '0;
+              x_dir      <= 1'b1;
+              x_lba      <= 32'(LBA_BASE);
+              x_blocks   <= 24'(TIMING_BLOCKS);
+              x_start    <= 1'b1;
+              sst_q      <= S_TM_WR;
+            end else begin
+              cfg_step_q <= cfg_step_q + 2'd1;
+            end
+          end
+        end
+
+        S_TM_WR: begin
+          if (x_done) begin
+            if (s_err_q[ERR_LSB +: 8] == 8'(ERR_OK)) begin
+              x_dir    <= 1'b0;
+              x_lba    <= 32'(LBA_BASE);
+              x_blocks <= 24'(TIMING_BLOCKS);
+              x_start  <= 1'b1;
+              sst_q    <= S_TM_RD;
+            end else begin
+              sst_q    <= S_TM_NEXT;   // cell failed on the write side
+            end
+          end
+        end
+
+        S_TM_RD: begin
+          if (x_done) begin
+            // A cell counts as working only if the read came back with no error
+            // code, no mismatched beat and no stall. Anything less is a phase
+            // that cannot be trusted, which is the whole point of the mask.
+            if ((s_err_q[ERR_LSB +: 8] == 8'(ERR_OK)) &&
+                (mism_q == 32'd0) && !x_stalled_q) begin
+              tm_mask_q[int'(div_idx_q)][phase_q] <= 1'b1;
+            end
+            mism_total_q <= mism_total_q + mism_q;
+            sst_q        <= S_TM_NEXT;
+          end
+        end
+
+        // The matrix's single exit. A state rather than a task called from both
+        // cell endings: this repository has already been bitten by
+        // GowinSynthesis miscompiling a construct that simulated correctly
+        // (ultra_sd_cmd.sv's ladder ROM, which came back as a constant zero),
+        // so the sequencer stays a plain case over plain state.
+        S_TM_NEXT: begin
+          if (phase_q != 4'(TIMING_PHASE_MAX)) begin
+            phase_q    <= phase_q + 4'd1;
+            cfg_step_q <= '0;
+            sst_q      <= S_TM_SET;
+          end else if (div_idx_q != 3'(NDIV - 1)) begin
+            div_idx_q  <= div_idx_q + 3'd1;
+            phase_q    <= '0;
+            cfg_step_q <= '0;
+            sst_q      <= S_TM_SET;
+          end else begin
+            // No S_CALC: the matrix needs no division, and the window
+            // arithmetic is combinational off the mask in the report mux.
+            rep_start <= 1'b1;
+            sst_q     <= S_REPORT;
+          end
+        end
+
+        // ---- SUITE_EDGE: one case at a time --------------------------------
+        S_EG_SET: begin
+          x_lba    <= eg_lba;
+          x_blocks <= eg_blocks;
+          x_dir    <= !eg_rdonly;
+          x_start  <= 1'b1;
+          ct_arm_q <= eg_poke;
+          ct_at_q  <= eg_poke_at;
+          ct_wdata_q <= eg_poke_cmd;
+          sst_q    <= eg_rdonly ? S_EG_RD : S_EG_WR;
+        end
+
+        S_EG_WR: begin
+          if (x_done) begin
+            // A case that expects a refusal is finished here: the point is that
+            // the core said no before it issued anything, so there is nothing to
+            // read back. A case that expected to work and did not is finished
+            // here too, with the error it actually gave.
+            if ((eg_err_exp != 8'(ERR_OK)) ||
+                (s_err_q[ERR_LSB +: 8] != 8'(ERR_OK))) begin
+              eg_stat_q[int'(eg_case_q)] <=
+                {8'h0, s_err_q[ERR_LSB +: 8], 8'h0,
+                 8'((s_err_q[ERR_LSB +: 8] == eg_err_exp) ? 1 : 0)};
+              sst_q <= eg_reinit ? S_EG_WAIT : S_EG_NEXT;
+            end else if (eg_reinit) begin
+              init_cyc_q <= '0;
+              sst_q      <= S_EG_WAIT;
+            end else begin
+              x_lba    <= eg_lba;
+              x_blocks <= eg_blocks;
+              x_dir    <= 1'b0;
+              x_start  <= 1'b1;
+              sst_q    <= S_EG_RD;
+            end
+          end
+        end
+
+        S_EG_RD: begin
+          if (x_done) begin
+            eg_stat_q[int'(eg_case_q)] <=
+              {8'h0, s_err_q[ERR_LSB +: 8],
+               (mism_q > 32'd255) ? 8'hFF : 8'(mism_q),
+               8'(((s_err_q[ERR_LSB +: 8] == eg_err_exp) &&
+                   (!eg_verify || (mism_q == 32'd0))) ? 1 : 0)};
+            // Only a case that was asked to verify contributes to MISMATCH; a
+            // read of a sector we never wrote is not ours to compare.
+            if (eg_verify) mism_total_q <= mism_total_q + mism_q;
+            sst_q        <= eg_reinit ? S_EG_WAIT : S_EG_NEXT;
+          end
+        end
+
+        // A soft reset put the core back at SYS_RESET, so the identification
+        // ladder is running again. Wait for it the way a driver would -- on
+        // STATUS.CARD_READY -- rather than on a cycle count that would be wrong
+        // on the next card.
+        S_EG_WAIT: begin
+          init_cyc_q <= init_cyc_q + 32'd1;
+          if (rsp_valid) begin
+            if (rsp_rdata[STATUS_CARD_RDY_BIT]) begin
+              eg_stat_q[int'(eg_case_q)] <= {8'h0, 8'h0, 8'h0, 8'h1};
+              sst_q <= S_EG_NEXT;
+            end else if (init_cyc_q > 32'(INIT_TIMEOUT_CYC)) begin
+              eg_stat_q[int'(eg_case_q)] <= {8'h0, 8'(ERR_INIT), 8'h0, 8'h0};
+              sst_q <= S_EG_NEXT;
+            end
+          end
+        end
+
+        S_EG_NEXT: begin
+          if (eg_case_q != 5'(EDGE_CASES - 1)) begin
+            eg_case_q <= eg_case_q + 5'd1;
+            sst_q     <= S_EG_SET;
+          end else begin
+            rep_start <= 1'b1;
+            sst_q     <= S_REPORT;
+          end
+        end
+
+        // ---- SUITE_SOAK ----------------------------------------------------
+        S_SK_WR: begin
+          if (x_done) begin
+            if (s_err_q[ERR_LSB +: 8] != 8'(ERR_OK))
+              err_last_q <= 32'(s_err_q[ERR_LSB +: 8]);
+            x_dir    <= 1'b0;
+            x_lba    <= 32'(LBA_BASE);
+            x_blocks <= 24'(SOAK_BLOCKS);
+            x_start  <= 1'b1;
+            sst_q    <= S_SK_RD;
+          end
+        end
+
+        S_SK_RD: begin
+          if (x_done) begin
+            sk_mism_q    <= sk_mism_q + mism_q;
+            mism_total_q <= mism_total_q + mism_q;
+            sk_retry_q   <= sk_retry_q + s_retry_q;
+            if (s_err_q[ERR_LSB +: 8] != 8'(ERR_OK))
+              err_last_q <= 32'(s_err_q[ERR_LSB +: 8]);
+            sst_q <= S_SK_NEXT;
+          end
+        end
+
+        S_SK_NEXT: begin
+          sk_iter_q <= sk_iter_q + 32'd1;
+          // A checkpoint every SOAK_ITERS/NDIV pairs, and the last iteration
+          // always lands on one so the final row is the final state.
+          if ((((sk_iter_q + 32'd1) % 32'(SOAK_ITERS / NDIV)) == 32'd0) &&
+              (sk_ck_q < 3'(NDIV))) begin
+            sk_iter_a [int'(sk_ck_q)] <= sk_iter_q + 32'd1;
+            sk_mism_a [int'(sk_ck_q)] <= sk_mism_q;
+            sk_retry_a[int'(sk_ck_q)] <= sk_retry_q;
+            // el_sd_q is the bench's own SD-cycle count of the read that just
+            // finished; s_data_q is the core's payload count of the same one.
+            sk_xchk_a [int'(sk_ck_q)] <= (el_sd_q > s_data_q)
+                                           ? (el_sd_q - s_data_q) : 32'd0;
+            sk_ck_q <= sk_ck_q + 3'd1;
+          end
+
+          if ((sk_iter_q + 32'd1) >= 32'(SOAK_ITERS)) begin
+            rep_start <= 1'b1;
+            sst_q     <= S_REPORT;
+          end else begin
+            x_dir    <= 1'b1;
+            x_lba    <= 32'(LBA_BASE);
+            x_blocks <= 24'(SOAK_BLOCKS);
+            x_start  <= 1'b1;
+            sst_q    <= S_SK_WR;
+          end
+        end
+
         S_CALC: begin
           if (!div_busy && !div_done) begin
             div_start <= 1'b1;

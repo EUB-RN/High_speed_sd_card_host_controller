@@ -309,9 +309,9 @@ module ultra_sd_block #(
 
   // Kart varligi ve init tamam KOMBINASYONEL kalir: tek bit, yolu kisa, ve
   // kart cikarma karari bir cevrim bayatlamamali.
-  assign start_err = !pres_sync_q[1] ? ERR_NO_CARD
-                   : !card_ready_i   ? ERR_CARD_STATE
-                                     : start_arg_err_q;
+  assign start_err = err_e'(!pres_sync_q[1] ? ERR_NO_CARD
+                          : !card_ready_i   ? ERR_CARD_STATE
+                                            : start_arg_err_q);
   assign start_bad = (step_q == S_IDLE) && go_rise &&
                      (!pres_sync_q[1] || !card_ready_i || start_arg_bad_q);
 
@@ -319,13 +319,14 @@ module ultra_sd_block #(
                   busy_tmo || (rd_crc_fail && !retry_left) ||
                   (wr_nak && !retry_left) || (abort_evt && !pres_sync_q[1]);
 
-  assign fail_code_o = start_bad               ? start_err
+  assign fail_code_o = err_e'(
+                       start_bad               ? start_err
                      : cmd_fail                ? cmd_err_i
                      : abort_evt               ? ERR_NO_CARD
                      : wr_proto                ? ERR_PROTOCOL
                      : (rd_tmo || wr_tmo || busy_tmo) ? ERR_DAT_TIMEOUT
                      : rd_crc_fail             ? ERR_DAT_CRC
-                                               : ERR_WR_CRC_TOKEN;
+                                               : ERR_WR_CRC_TOKEN);
 
   logic [STAT_DUR_W-1:0] stat_gap_q;
   logic [STAT_RTY_W-1:0] stat_rty_crc_q;

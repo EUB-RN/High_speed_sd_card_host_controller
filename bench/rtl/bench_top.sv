@@ -61,7 +61,30 @@ module bench_top #(
   // this board sends after a response -- CMD55, at the ACMD41 rung -- was the
   // one that went unanswered, and a gap measured in microseconds at the 399 kHz
   // identification clock costs nothing measurable.
-  parameter int NCC_GAP_CLK = 64
+  parameter int NCC_GAP_CLK = 64,
+
+  // Which suite this bitstream runs: 0 = the graded measurement, 1 = the
+  // sampling-phase margin matrix. See bench_core's SUITE parameter for why this
+  // is a build-time choice and not a switch on the dock.
+  //
+  // bench_defines.sv is added FIRST by bench/build.tcl and GowinSynthesis
+  // compiles the added files as one unit, so a `define there reaches this
+  // default -- the same mechanism that turns ULTRA_SD_DEBUG_PORT on.
+`ifdef BENCH_SUITE
+  parameter int SUITE       = `BENCH_SUITE,
+`else
+  parameter int SUITE       = 0,
+`endif
+
+  // Payload per SUITE_EDGE case that is not a shape case.
+  parameter int EDGE_BLOCKS = 4,
+
+  // SUITE_CTRL / SUITE_SOAK sizing. SOAK_ITERS is what makes R-MEAS-5's
+  // half-hour: at the tier divisor one pair of 8 blocks is about a millisecond,
+  // so 64 is a smoke test and six figures is the soak.
+  parameter int CTRL_BLOCKS = 8,
+  parameter int SOAK_ITERS  = 64,
+  parameter int SOAK_BLOCKS = 8
 ) (
   input  logic       clk27,      // 27 MHz board oscillator
 
@@ -246,6 +269,11 @@ module bench_top #(
     .DIV_TARGET        (DIV_TARGET),
     .TEST_BLOCKS       (TEST_BLOCKS),
     .RUNS              (RUNS),
+    .SUITE             (SUITE),
+    .EDGE_BLOCKS       (EDGE_BLOCKS),
+    .CTRL_BLOCKS       (CTRL_BLOCKS),
+    .SOAK_ITERS        (SOAK_ITERS),
+    .SOAK_BLOCKS       (SOAK_BLOCKS),
     .UART_CLKS_PER_BIT (UART_CLKS_PER_BIT)
   ) u_bench (
     .clk         (clk),

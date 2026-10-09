@@ -968,7 +968,7 @@ module ultra_sd_cmd
   // ayri bir valid/ready el sikismasina gerek yok.
   assign ld_valid = init_owns ? 1'b1 : req_valid_i;
   assign ld_index = sel_init    ? rom_cmd : req_index_i;
-  assign ld_resp  = sel_init    ? rom_resp : req_resp_i;
+  assign ld_resp  = resp_e'(sel_init ? rom_resp : req_resp_i);
   assign ld_acmd  = sel_init    ? rom_acmd : req_is_acmd_i;
 
   always_comb begin

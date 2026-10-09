@@ -45,6 +45,13 @@ regression: $(CATEGORIES)
 # grouped the same way the sources are.
 $(foreach c,$(CATEGORIES),$(foreach t,$($(c)_TESTS),$(eval $(call TEST_rule,$(t),$(c)))))
 
+# DRAFTS get a rule but no place in the regression. A suite whose failures have
+# not been root-caused belongs behind an explicit `make <name>`, where whoever
+# runs it is expecting them -- not in a gate everyone else has to walk past. The
+# list below is the honest answer to "what exists but is not trusted yet", and a
+# draft graduates by moving one word from _DRAFTS to _TESTS.
+$(foreach c,$(CATEGORIES),$(foreach t,$($(c)_DRAFTS),$(eval $(call TEST_rule,$(t),$(c)))))
+
 # A category target depends on its tests; an empty category is not an error,
 # it is a category whose tests are not written yet.
 $(foreach c,$(CATEGORIES),$(eval $(c): $$($(c)_TESTS)))
@@ -53,6 +60,9 @@ list:
 	@printf 'SIM=%s\n\n' '$(SIM)'
 	@$(foreach c,$(CATEGORIES), \
 	  printf '%-16s %s\n' '$(c)' '$(if $($(c)_TESTS),$($(c)_TESTS),(none yet))';)
+	@printf '\n%-16s %s\n' 'drafts' \
+	  '$(if $(strip $(foreach c,$(CATEGORIES),$($(c)_DRAFTS))),$(foreach c,$(CATEGORIES),$($(c)_DRAFTS)),(none))'
+	@printf '%-16s %s\n' '' 'run with: make <name>  -- not in the regression'
 
 # R-LANG-9: zero warnings over the synthesizable hierarchy. Lint is a category
 # of its own in spirit, but it needs no testbench, so it stays a plain target.
