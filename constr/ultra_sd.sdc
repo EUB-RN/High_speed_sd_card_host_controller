@@ -121,6 +121,12 @@ create_generated_clock -name sd_clk_core -source [get_ports {clk}] -master_clock
 ## sadelestirildiginde kalan sart
 ##     tC2Q + fabric route + (ped_veri - ped_saat)  >=  tIH - iz = 1.4 ns
 ## olur; ortak-mod terimleri (saat agaci, ayni sinif ped) sadelesir.
+##
+## Bu kisit BUGUN hicbir hold yolunu baglamiyor: veri DUSEN kenarda suruluyor,
+## yani hold tarafinda yarim periyotluk (10.101 ns) fazladan pay var. Ancak TX
+## launch'i YUKSELEN kenara almak gundeme gelirse launch ile ornekleme kenari
+## cakisir ve hold dogrudan tIH'e dayanir -- o semanin marj analizi ve neden
+## tutmadigi: doc/tx_launch_edge.md.
 ## ---- PED SAATINI SAAT OBJESI YAPMA: IKI DENEME, IKISI DE OLDU -------------
 ## Yukaridaki elle kredi cirkin; dogrusu saatin pede kadarki yolculugunu STA'nin
 ## CAPTURE tarafina koymak olurdu. Iki yol da denendi ve OLCULDU (2026-10-08,
