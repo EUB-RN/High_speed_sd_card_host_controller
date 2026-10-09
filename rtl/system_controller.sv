@@ -432,11 +432,9 @@ module system_controller
   assign bus_wide_o  = bus_wide_q;
 
   // Table 5-1 register goruntusu ve IRQ kenarlari (yukaridaki FSM'in cikisi).
-  // Cast is explicit: a ternary over enum branches has a packed-vector result
-  // type, and Icarus 12 refuses to assign that to an enum without one.
-  assign err_o = err_e'(err_seen_q ? err_q
-                      : init_err_i ? init_err_code_i
-                                   : ERR_OK);
+  assign err_o = err_seen_q ? err_q
+               : init_err_i ? init_err_code_i
+                            : ERR_OK;
 
   assign irq_set_o[IRQ_DONE_BIT] = done_q & ~done_d_q;
   assign irq_set_o[IRQ_ERR_BIT]  = (err_seen_q & ~err_d_q) |
