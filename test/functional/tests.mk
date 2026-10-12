@@ -10,14 +10,19 @@ ultra_sd_line_SRCS := $(PKG) $(RTL_DIR)/crc/ultra_sd_crc16.sv \
                       $(RTL_DIR)/ultra_sd_line.sv \
                       $(TEST_DIR)/functional/tb_ultra_sd_line.sv
 
-# Merdiven artik ultra_sd_cmd'in icinde, bu yuzden testler komut motorunu ve
-# CRC7'yi de derliyor: merdiven gercek CMD hatti uzerinden sinaniyor.
+# Separate init and command modules are tested through the protocol wrapper.
 init_ladder_basic_SRCS := $(PKG) $(RTL_DIR)/crc/ultra_sd_crc7.sv \
                           $(RTL_DIR)/ultra_sd_cmd.sv \
+                          $(RTL_DIR)/ultra_sd_cmd_tx.sv \
+                          $(RTL_DIR)/ultra_sd_init.sv \
+                          $(RTL_DIR)/ultra_sd_protocol.sv \
                           $(TEST_DIR)/functional/tb_init_ladder_basic.sv
 
 init_ladder_full_SRCS := $(PKG) $(RTL_DIR)/crc/ultra_sd_crc7.sv \
                          $(RTL_DIR)/ultra_sd_cmd.sv \
+                         $(RTL_DIR)/ultra_sd_cmd_tx.sv \
+                         $(RTL_DIR)/ultra_sd_init.sv \
+                         $(RTL_DIR)/ultra_sd_protocol.sv \
                          $(TEST_DIR)/functional/tb_init_ladder_full.sv
 
 block_requests_SRCS := $(PKG) $(RTL_DIR)/ultra_sd_block.sv \

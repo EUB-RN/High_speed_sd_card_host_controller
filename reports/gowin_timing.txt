@@ -1,0 +1,185 @@
+# ultra_sd_top post-P&R timing -- sign-off (constr/ultra_sd.sdc, 99 / 49.5 MHz)
+
+Timing Messages
+Report Title
+Timing Analysis Report
+Design File
+/home/hpw/High_speed_sd_card_host_controller/syn/core_pnr/impl/gwsynthesis/project.vg
+Physical Constraints File
+/home/hpw/High_speed_sd_card_host_controller/syn/core_pnr/core_pnr_pins.cst
+Timing Constraint File
+/home/hpw/High_speed_sd_card_host_controller/constr/ultra_sd.sdc
+Tool Version
+V1.9.11.03 Education
+Part Number
+GW2A-LV18PG256C8/I7
+Device
+GW2A-18
+Device Version
+C
+Created Time
+Mon Oct 12 15:40:24 2026
+Legal Announcement
+Copyright (C)2014-2025 Gowin Semiconductor Corporation. All rights reserved.
+
+STA Tool Run Summary:
+Setup Delay Model
+Slow 0.95V 85C C8/I7
+Hold Delay Model
+Fast 1.05V 0C C8/I7
+Numbers of Paths Analyzed
+13596
+Numbers of Endpoints Analyzed
+3856
+Numbers of Falling Endpoints
+278
+Numbers of Setup Violated Endpoints
+0
+Numbers of Hold Violated Endpoints
+0
+Clock Summary:
+NO.
+Clock Name
+Type
+Period
+Frequency(MHz)
+Rise
+Fall
+Source
+Master
+Objects
+1
+sys_clk
+Base
+10.101
+99.000
+0.000
+5.050
+clk_ibuf/O
+2
+sd_clk_core
+Generated
+20.202
+49.500
+0.000
+10.101
+clk_ibuf/O
+sys_clk
+u_phy/u_dqce_sd/CLKOUT
+3
+clk
+Base
+10.000
+100.000
+0.000
+5.000
+clk_ibuf/I
+Max Frequency Summary:
+NO.
+Clock Name
+Constraint
+Actual Fmax
+Logic Level
+Entity
+1
+sys_clk
+99.000(MHz)
+104.662(MHz)
+5
+TOP
+2
+sd_clk_core
+49.500(MHz)
+49.895(MHz)
+2
+TOP
+No timing paths to get frequency of clk!
+Total Negative Slack Summary:
+Clock Name
+Analysis Type
+Endpoints TNS
+Number of Endpoints
+sys_clk
+Setup
+0.000
+0
+sys_clk
+Hold
+0.000
+0
+sd_clk_core
+Setup
+0.000
+0
+sd_clk_core
+Hold
+0.000
+0
+clk
+Setup
+0.000
+0
+clk
+Hold
+0.000
+0
+
+Setup Paths Table
+Report Command:report_timing -setup -max_paths 25 -max_common_paths 1
+  slack     from -> to   [clocks]  relation/skew/delay
+     0.080  u_cmd/u_engine/u_tx/cmd_out_o_s0/Q  ->  u_phy/u_iobuf_cmd/IO   [sd_clk_core:[F] -> sd_clk_core:[R]]  rel 10.101  skew 2.270  delay 6.151
+     0.546  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/CTRL_0_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.520
+     0.794  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_20_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.272
+     0.908  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_29_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.158
+     0.908  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_30_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.158
+     0.981  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/BLOCKS_19_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.085
+     0.571  u_line/dat_out_q_2_s0/Q  ->  u_phy/g_dat_pad[2].u_iobuf_dat/IO   [sd_clk_core:[F] -> sd_clk_core:[R]]  rel 10.101  skew 2.270  delay 5.660
+     1.155  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/BLOCKS_11_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.911
+     1.155  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/BLOCKS_21_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.911
+     1.159  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_11_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.907
+     1.159  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_21_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.907
+     1.159  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_23_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.907
+     1.172  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_27_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.894
+     1.172  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_28_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.894
+     0.650  u_line/dat_out_q_1_s0/Q  ->  u_phy/g_dat_pad[1].u_iobuf_dat/IO   [sd_clk_core:[F] -> sd_clk_core:[R]]  rel 10.101  skew 2.270  delay 5.581
+     1.344  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/irq_stat_q_0_s1/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.722
+     1.348  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/BLOCKS_16_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.718
+     1.348  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_25_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.718
+     1.352  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_16_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.714
+     1.352  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_19_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.714
+     1.356  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/BLOCKS_3_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.710
+     1.356  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/BLOCKS_17_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.710
+     1.356  u_axi/u_axil/BVALID_s5/Q  ->  u_axi/u_reg/LBA_3_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 8.710
+     0.816  u_line/dat_out_q_3_s0/Q  ->  u_phy/g_dat_pad[3].u_iobuf_dat/IO   [sd_clk_core:[F] -> sd_clk_core:[R]]  rel 10.101  skew 2.270  delay 5.415
+     1.253  u_line/dat_out_q_0_s0/Q  ->  u_phy/g_dat_pad[0].u_iobuf_dat/IO   [sd_clk_core:[F] -> sd_clk_core:[R]]  rel 10.101  skew 2.270  delay 4.978
+
+Hold Paths Table
+Report Command:report_timing -hold -max_paths 25 -max_common_paths 1
+  slack     from -> to   [clocks]  relation/skew/delay
+     0.198  u_line/rx_data_q_28_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[28]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.447
+     0.213  u_line/rx_data_q_24_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[24]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.462
+     0.225  u_line/rx_data_q_27_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[27]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.474
+     0.225  u_line/rx_data_q_26_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[26]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.474
+     0.227  u_line/rx_data_q_11_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[11]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.476
+     0.227  u_line/rx_data_q_9_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[9]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.476
+     0.320  u_line/rx_data_q_6_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[6]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.569
+     0.324  u_line/rx_data_q_16_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[16]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.573
+     0.324  u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s2/Q  ->  u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s5/CE   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.335
+     0.335  u_line/rx_data_q_31_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[31]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.584
+     0.335  u_line/rx_data_q_29_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[29]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.584
+     0.335  u_line/rx_data_q_25_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[25]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.584
+     0.335  u_line/rx_data_q_15_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[15]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.584
+     0.335  u_line/rx_data_q_7_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[7]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.584
+     0.347  u_line/rx_data_q_23_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[23]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.596
+     0.347  u_line/rx_data_q_19_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[19]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.596
+     0.347  u_line/rx_data_q_14_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[14]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.596
+     0.347  u_line/rx_data_q_5_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[5]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.596
+     0.349  u_line/rx_data_q_10_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[10]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.598
+     0.349  u_line/rx_data_q_8_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[8]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.598
+     0.349  u_line/rx_data_q_2_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[2]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.598
+     0.349  u_line/rx_data_q_1_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[1]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.598
+     0.363  u_line/rx_data_q_17_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[17]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.612
+     0.363  u_line/rx_data_q_13_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[13]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.612
+     0.363  u_line/rx_data_q_0_s0/Q  ->  u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[0]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.612
+
+Full per-path dumps: syn/core_pnr/impl/pnr/project_tr_content.html

@@ -31,6 +31,9 @@ add_file ../../rtl/ultra_sd_block.sv
 
 # ---- L2: komut motoru + baslatma merdiveni (tek modul, arbiter yok) --------
 add_file ../../rtl/ultra_sd_cmd.sv
+add_file ../../rtl/ultra_sd_cmd_tx.sv
+add_file ../../rtl/ultra_sd_init.sv
+add_file ../../rtl/ultra_sd_protocol.sv
 
 # ---- L1: DAT cerceveleme ve CRC --------------------------------------------
 add_file ../../rtl/crc/ultra_sd_crc7.sv
@@ -39,12 +42,23 @@ add_file ../../rtl/ultra_sd_line.sv
 
 # ---- L0 ve sistem -----------------------------------------------------------
 add_file ../../rtl/clk_controller.sv
+add_file ../../rtl/rst_sync.sv
 add_file ../../rtl/system_controller.sv
 add_file ../../rtl/ultra_sd_phy_gowin.sv
 add_file ../../rtl/ultra_sd_top.sv
 
+# ---- fiziksel kisitlar ------------------------------------------------------
+# Bu build'in raporu daha once sd_pins.cst adli VAR OLMAYAN bir dosyayi
+# gosteriyordu: SD pedleri de yerlestirici tarafindan rastgele ve varsayilan
+# LVCMOS18 olarak dagitiliyordu, yani ped cikis gecikmesi gercekte olmayan bir
+# degerdi (tINS 4.582 ns; gercek LVCMOS33 DRIVE=8 pedinde 3.684). Asagidaki
+# dosya SD pedlerini gercek pinlerine ve gercek IO standardina baglar; geri
+# kalan portlar yalnizca IO_TYPE alir (bank gerilimi tek olsun diye), yeri
+# serbesttir -- AXI portlarinin pede cikmamasi bu build'in amacidir.
+add_file core_pnr_pins.cst
+
 # ---- zamanlama kisitlari (R-CLK-6) -----------------------------------------
-add_file ../../constr/ultra_sd.sdc
+add_file $env(SDC_FILE)
 
 set_option -top_module ultra_sd_top
 set_option -verilog_std sysv2017

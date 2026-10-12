@@ -1,10 +1,12 @@
 tb_throughput_read -- behavioural card, no flash
 blocks              = 16
 bus_width           = 4
-line_clk_total      = 16998
+sd_clk_total      = 17002
 payload             = 16384
 crc16               = 256
 stat_gap_core       = 360
 first_gap           = 121
 inter_block_each    = 8
 nonpayload_perblock = 38
+l1_start_to_cmd_sd  = 14
+l2_dat_to_beat_sd   = 65

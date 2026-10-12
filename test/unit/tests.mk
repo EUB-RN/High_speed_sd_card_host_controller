@@ -29,9 +29,12 @@ async_fifo_SRCS := $(RTL_DIR)/axi4/async_fifo.sv \
 
 ultra_sd_cmd_SRCS := $(PKG) $(RTL_DIR)/crc/ultra_sd_crc7.sv \
                      $(RTL_DIR)/ultra_sd_cmd.sv \
+                     $(RTL_DIR)/ultra_sd_cmd_tx.sv \
+                     $(RTL_DIR)/ultra_sd_init.sv \
+                     $(RTL_DIR)/ultra_sd_protocol.sv \
                      $(TEST_DIR)/unit/tb_ultra_sd_cmd.sv
 
-system_controller_SRCS := $(PKG) $(RTL_DIR)/system_controller.sv \
+system_controller_SRCS := $(PKG) $(RTL_DIR)/rst_sync.sv $(RTL_DIR)/system_controller.sv \
                           $(TEST_DIR)/unit/tb_system_controller.sv
 
 # Still to write here:

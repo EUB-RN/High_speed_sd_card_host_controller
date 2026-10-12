@@ -176,14 +176,49 @@ module faxil_axi4_lite_slave #(
     if (f_past_valid && reset_n && $past(BVALID && !BREADY))
       assume ($stable(bresp_r));
 
-  // Induction is not yet closed. The property set's outstanding-request
-  // counters are F_LGDEPTH wide, and induction starts from an arbitrary state,
-  // so it may begin with fourteen requests in flight -- a state this slave
-  // cannot reach, since it buffers exactly one response and gates its READYs
-  // on that buffer. Closing it needs an invariant tying those counters to the
-  // slave's own BVALID/RVALID, which is listed as still-to-do in README.md. A
-  // plain bound on the counters is not enough: it passes the base case and
-  // then fails the step for the same reason the original assertion did.
+  // ---- the induction invariant ----------------------------------------------
+  //
+  // THE SLAVE BUFFERS EXACTLY ONE RESPONSE PER CHANNEL, AND THAT HAS TO BE
+  // SAID OUT LOUD OR INDUCTION CANNOT KNOW IT.
+  //
+  // Base-case BMC passes on its own: starting from reset, the slave never gets
+  // anywhere near the property set's F_LGDEPTH capacity. Induction does not
+  // start from reset. It starts from an arbitrary assignment of every state
+  // bit, so it is free to begin with fourteen reads in flight and RVALID low,
+  // and from there faxil_slave's own
+  //     if (f_axi_rd_outstanding == 4'b1110) assert(!i_axi_arready)
+  //   (faxil_slave.v:596-598)
+  // fails immediately -- the slave holds ARREADY high because, as far as its
+  // own state goes, nothing is outstanding at all. That is the counterexample
+  // the prove task was reporting, and it is a statement about an unreachable
+  // state rather than about the slave.
+  //
+  // What closes it is not a bound on the counters -- that passes the base case
+  // and fails the step for exactly the same reason -- but an EQUALITY tying
+  // each counter to the one bit of slave state that actually tracks it:
+  //
+  //   read   ARREADY = !RVALID || RREADY, and RVALID is set on the AR
+  //          handshake and cleared on the R handshake, both on the same edge
+  //          the counter moves. So outstanding reads == RVALID, always. A
+  //          back-to-back accept (AR handshake while R handshake completes)
+  //          leaves both at 1, which the equality already covers.
+  //
+  //   write  AWREADY and WREADY each require the other channel's VALID, so the
+  //          two write handshakes are the same cycle by construction and the
+  //          two counters move together. BVALID is set on that cycle and
+  //          cleared on the B handshake, so both equal BVALID.
+  //
+  // These are assertions, not assumptions: BMC proves them from reset, and
+  // induction then gets to use them to rule out the states it was inventing.
+  // If the slave is ever changed to buffer more than one response they fail
+  // here first, which is the right place to find out.
+  always @(posedge clk)
+    if (f_past_valid && reset_n) begin
+      assert (f_rd_outstanding  == {3'b000, RVALID});
+      assert (f_wr_outstanding  == {3'b000, BVALID});
+      assert (f_awr_outstanding == {3'b000, BVALID});
+    end
+
 `endif
 
 endmodule

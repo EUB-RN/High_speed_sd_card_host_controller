@@ -12,45 +12,60 @@
 # Run it with `make error_injection`; mutation runs expect to FAIL the
 # testbench, so the pass criterion is inverted and owned by the script.
 
-error_injection_TESTS :=
+error_injection_TESTS := error_inject
 
-# DRAFT, not in the regression yet. One of the four scenarios is verified; the
-# other three reached behaviour nobody has characterised before, because nothing
-# ever drove these paths:
+# All four scenarios reach their Table 5-3 code and recover. Three of them were
+# recorded here as OPEN for a long time, and the reason turned out to be the
+# same single line in the testbench rather than three separate design problems:
 #
-#   crc16_read_error   PASSES. A persistently corrupted data CRC makes the core
-#                      retry three times and then report ERR_DAT_CRC (0x05), and
-#                      STAT_RETRY confirms the retries really happened. Removing
-#                      the fault gives a clean read again. This one is done.
+#   crc16_read_error   a persistently corrupted data CRC makes the core retry
+#                      CRC_RETRIES times and then report ERR_DAT_CRC (0x05),
+#                      with STAT_RETRY confirming the retries happened.
+#   crc_status_reject  a card that answers a written block with a negative CRC
+#                      status token gets the block re-sent from the FIFO, and
+#                      when it keeps refusing, ERR_WR_CRC_TOKEN (0x06). This is
+#                      R-FUNC-13, and until now nothing had ever driven it.
+#   response_timeout   a card that never answers gives ERR_CMD_TIMEOUT (0x01)
+#                      out of ultra_sd_cmd's own retry ladder.
+#   dat_stuck_busy     a card that never releases DAT0 gives ERR_DAT_TIMEOUT
+#                      (0x04) when PROG_TIMEOUT_CLK expires.
 #
-#   crc_status_reject  OPEN. A 2-block write whose first block the card rejects
-#                      stalls at beat 226 of 256 and never reaches DONE. The
-#                      retry has to rewind the payload FIFO and re-send; what it
-#                      does instead is not yet known.
+# WHAT WAS ACTUALLY WRONG, since the notes that used to be here blamed the core:
 #
-#   response_timeout   OPEN. The code is right -- ERR_CMD_TIMEOUT (0x01) -- but
-#                      the transfer does not finish cleanly afterwards.
+#   The testbench armed its write source with wr_load, waited `@(posedge clk)`,
+#   then cleared it -- which races the always_ff meant to sample it, and Icarus
+#   resolved that race against the testbench every single time. wr_left was
+#   never loaded, so no write scenario ever put a byte on the bus; the block
+#   layer sat in S_WR_ARM waiting for a block nobody was sending. That is the
+#   "stalls at beat 226 of 256 and never reaches DONE" this file used to
+#   describe. crc16_read_error was unaffected only because a read passes
+#   wr_req = 0. wr_load is driven on the negedge now.
 #
-#   dat_stuck_busy     OPEN, blocked behind the write path above.
+# The scenarios did then find one real design bug, and it is worth knowing:
+# S_BUSY was reading card_busy_i in the cycles before ultra_sd_line had sampled
+# DAT0 at all, so a write could be reported DONE while the card was still
+# programming. ultra_sd_block now has a settling delay before it believes that
+# signal -- see BUSY_SETTLE there.
 #
-# A testbench bug found on the way, and worth knowing for any new test here:
-# STATUS.DONE is cleared by accept_i, and `go` reaches ultra_sd_block through a
-# two-flop synchroniser into cmd_clk -- twenty system clocks per edge at the
-# tier divisor. A poll that starts right after the START write reads the
-# PREVIOUS transfer's DONE and its error code. Wait for DONE to CLEAR first.
-# bench_core never trips on this because X_RUN streams the payload before it
-# polls. tb_error_inject now waits for both edges.
-error_injection_DRAFTS := error_inject
+# The four faults share one harness -- core, card, AXI-Lite master, stream --
+# and differ by one input and one expected code, so four files would be four
+# copies of the setup and one line of test each.
+#
+# A testbench trap worth keeping: STATUS.DONE is cleared by accept_i, and `go`
+# reaches ultra_sd_block through a two-flop synchroniser into the SD domain --
+# twenty system clocks per edge at the tier divisor. A poll that starts right
+# after the START write reads the PREVIOUS transfer's DONE and its error code.
+# Wait for DONE to CLEAR first; xfer() does.
+#
+# +eidbg prints the block step, the line cell and the card's DAT state on
+# change, which is what placed both of the bugs above.
 
-# The four faults in one testbench rather than four: they share the whole
-# harness -- core, card, AXI-Lite master, stream -- and differ by one input and
-# one expected code, so four files would be four copies of the setup and one
-# line of test each. Each scenario is named for the entry it covers below.
 error_inject_DEFS := ULTRA_SD_NO_VENDOR_PRIM
 error_inject_SRCS := $(PKG) \
                      $(RTL_DIR)/crc/ultra_sd_crc7.sv \
                      $(RTL_DIR)/crc/ultra_sd_crc16.sv \
                      $(RTL_DIR)/clk_controller.sv \
+                     $(RTL_DIR)/rst_sync.sv \
                      $(RTL_DIR)/system_controller.sv \
                      $(RTL_DIR)/axi4/async_fifo.sv \
                      $(RTL_DIR)/axi4/axi4_lite_slave.sv \
@@ -60,6 +75,9 @@ error_inject_SRCS := $(PKG) \
                      $(RTL_DIR)/ultra_sd_reg.sv \
                      $(RTL_DIR)/ultra_sd_block.sv \
                      $(RTL_DIR)/ultra_sd_cmd.sv \
+                     $(RTL_DIR)/ultra_sd_cmd_tx.sv \
+                     $(RTL_DIR)/ultra_sd_init.sv \
+                     $(RTL_DIR)/ultra_sd_protocol.sv \
                      $(RTL_DIR)/ultra_sd_line.sv \
                      $(RTL_DIR)/ultra_sd_phy_gowin.sv \
                      $(RTL_DIR)/ultra_sd_top.sv \

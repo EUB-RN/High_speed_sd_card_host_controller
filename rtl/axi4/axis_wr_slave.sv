@@ -7,6 +7,7 @@ module axis_wr_slave #(
 
   input  logic                         axi_clk,
   input  logic                         axi_rst_n,
+  input  logic                         axi_soft_clr,
 
   input  logic [DATA_W-1:0]            s_axis_wr_tdata,
   input  logic                         s_axis_wr_tvalid,
@@ -15,6 +16,7 @@ module axis_wr_slave #(
 
   input  logic                         sd_clk,
   input  logic                         sd_rst_n,
+  input  logic                         sd_soft_clr,
   input  logic                         sd_rd_en,
 
   input  logic                         sd_rd_commit,
@@ -45,6 +47,11 @@ module axis_wr_slave #(
       block_ready_q <= 1'b0;
     end else begin
       block_ready_q <= (sd_rd_level >= ($clog2(FIFO_DEPTH)+1)'(BLOCK_WORDS));
+
+      if (sd_soft_clr) begin
+        block_ready_q <= 1'b0;
+
+      end
     end
   end
 
@@ -57,6 +64,7 @@ module axis_wr_slave #(
   ) u_fifo (
     .wr_clk   (axi_clk),
     .wr_rst_n (axi_rst_n),
+    .wr_soft_clr (axi_soft_clr),
     .wr_en     (s_axis_wr_tvalid && s_axis_wr_tready),
     .wr_data   (fifo_wr_data),
     .wr_commit (1'b1),
@@ -65,6 +73,7 @@ module axis_wr_slave #(
     .wr_level  (),
     .rd_clk   (sd_clk),
     .rd_rst_n (sd_rst_n),
+    .rd_soft_clr (sd_soft_clr),
     .rd_en     (sd_rd_en),
     .rd_commit (sd_rd_commit),
     .rd_rewind (sd_rd_rewind),

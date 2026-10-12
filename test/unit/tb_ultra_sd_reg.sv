@@ -66,7 +66,10 @@ module tb_ultra_sd_reg;
           "reset request registers");
     check(CFG_CLK == 8'hff && CFG_PHY == 0 && !irq, "reset configuration/IRQ");
     read_check(REG_VERSION, 32'h53440100, "VERSION");
-    read_check(REG_CTRL_STATUS, 32'h000005a5, "CTRL_STATUS (STATUS + ERR)");
+    // Table 5-1 gives STATUS and ERR a register each (0x08, 0x0C). They used
+    // to share one word with CTRL, IRQ_EN and IRQ_STAT.
+    read_check(REG_STATUS, 32'h0000_00a5, "STATUS");
+    read_check(REG_ERR,    32'h0000_0005, "ERR");
     read_check(REG_CARD_BLK, 32'h12345678, "CARD_BLK");
     read_check(REG_STAT_RETRY, 32'h44556677, "STAT_RETRY");
 
@@ -74,12 +77,23 @@ module tb_ultra_sd_reg;
     write_reg(REG_LBA, 32'haa00cc00, 4'b0101);
     read_check(REG_LBA, 32'h11003300, "LBA byte strobes");
 
-    write_reg(REG_XFER_CFG, {1'b1, 7'h0, 24'habcdef}, 4'b1111);
-    read_check(REG_XFER_CFG, {1'b1, 7'h0, 24'habcdef}, "XFER_CFG write/read");
+    // BLOCKS (0x14) and XFER (0x18) are separate registers.
+    write_reg(REG_BLOCKS, 32'h00abcdef, 4'b1111);
+    read_check(REG_BLOCKS, 32'h00abcdef, "BLOCKS write/read");
+    // BLOCKS is 24 bits: the top byte reads back zero whatever was written.
+    write_reg(REG_BLOCKS, 32'hff000000, 4'b1000);
+    read_check(REG_BLOCKS, 32'h00abcdef, "BLOCKS ignores bits above 23");
+    write_reg(REG_XFER, 32'(1 << XFER_DIR_BIT), 4'b0001);
+    read_check(REG_XFER, 32'h0000_0001, "XFER write/read");
 
-    write_reg(REG_HW_CFG, {18'h0, 6'h2d, 8'h55}, 4'b0011);
+    // CFG_CLK (0x1C) and CFG_PHY (0x20) likewise. The separation matters:
+    // while they shared a word, software setting a PHY force bit with an
+    // ordinary 32-bit write zeroed the clock divisor.
+    write_reg(REG_CFG_CLK, 32'h0000_0055, 4'b0001);
+    write_reg(REG_CFG_PHY, 32'h0000_002d, 4'b0001);
     check(CFG_CLK == 8'h55 && CFG_PHY == 6'h2d, "configuration writes");
-    read_check(REG_HW_CFG, {18'h0, 6'h2d, 8'h55}, "HW_CFG read");
+    read_check(REG_CFG_CLK, 32'h0000_0055, "CFG_CLK read");
+    read_check(REG_CFG_PHY, 32'h0000_002d, "CFG_PHY read");
 
     // CFG_CLK is the only source of the SD clock divisor, so the init ladder
     // seeds it through CFG_CLK_HW rather than driving the PHY around the
@@ -87,22 +101,22 @@ module tb_ultra_sd_reg;
     // divisor actually in force, and a software write still wins.
     CFG_CLK_HW = 8'h04; @(posedge clk); #1;
     check(CFG_CLK == 8'h04, "init ladder seeds CFG_CLK");
-    read_check(REG_HW_CFG, {18'h0, 6'h2d, 8'h04}, "seeded CFG_CLK reads back");
+    read_check(REG_CFG_CLK, 32'h0000_0004, "seeded CFG_CLK reads back");
 
-    write_reg(REG_HW_CFG, {18'h0, 6'h2d, 8'h02}, 4'b0001);
+    write_reg(REG_CFG_CLK, 32'h0000_0002, 4'b0001);
     check(CFG_CLK == 8'h02, "software overrides the seeded divisor");
     repeat (3) @(posedge clk); #1;
     check(CFG_CLK == 8'h02, "an unchanged ladder does not reclaim CFG_CLK");
 
     // Ladder change and software write in the same cycle: software wins.
-    @(negedge clk); CFG_CLK_HW = 8'h10; wr_addr = REG_HW_CFG;
-    wr_data = {18'h0, 6'h2d, 8'h08}; wr_strb = 4'b0001; wr_en = 1;
+    @(negedge clk); CFG_CLK_HW = 8'h10; wr_addr = REG_CFG_CLK;
+    wr_data = 32'h0000_0008; wr_strb = 4'b0001; wr_en = 1;
     @(posedge clk); #1;
     check(CFG_CLK == 8'h08, "software write wins a simultaneous ladder load");
     @(negedge clk); wr_en = 0;
 
     // START snapshots LBA/BLOCKS/XFER and is a one-cycle pulse.
-    write_reg(REG_CTRL_STATUS, 1, 4'b0001);
+    write_reg(REG_CTRL, 1, 4'b0001);
     check(CTRL[CTRL_START_BIT], "START pulse asserted");
     check(LBA == 32'h11003300 && BLOCKS == 24'habcdef && XFER,
           "START snapshot");
@@ -117,17 +131,18 @@ module tb_ultra_sd_reg;
 
     // Pending IRQ, enable, W1C, and set-wins-clear collision.
     IRQ_SET = 3'b010; @(posedge clk); #1; IRQ_SET = 0;
-    write_reg(REG_CTRL_STATUS, 32'(3'b010 << IRQ_EN_LSB), 4'b1000);
+    write_reg(REG_IRQ_EN, 32'(3'b010 << IRQ_EN_LSB), 4'b0001);
     check(irq, "enabled pending IRQ raises pin");
-    write_reg(REG_CTRL_STATUS, 32'(3'b010 << IRQ_STAT_LSB), 4'b0100);
+    write_reg(REG_IRQ_STAT, 32'(3'b010 << IRQ_STAT_LSB), 4'b0001);
     check(!irq, "IRQ_STAT W1C clears pin");
-    @(negedge clk); IRQ_SET = 3'b010; wr_addr = REG_CTRL_STATUS;
-    wr_data = 32'(3'b010 << IRQ_STAT_LSB); wr_strb = 4'b0100; wr_en = 1;
+    @(negedge clk); IRQ_SET = 3'b010; wr_addr = REG_IRQ_STAT;
+    wr_data = 32'(3'b010 << IRQ_STAT_LSB); wr_strb = 4'b0001; wr_en = 1;
     @(posedge clk); #1;
     check(irq, "IRQ set wins simultaneous clear");
     @(negedge clk); IRQ_SET = 0; wr_en = 0;
 
     // Unmapped and out-of-window accesses must return SLVERR.
+    // 0x40 is the first word above Table 5-1's last row (IRQ_STAT at 0x3C).
     @(negedge clk); rd_addr = 32'h00000040; rd_en = 1; #1;
     check(rresp_r == 2'b10, "unmapped read SLVERR");
     @(negedge clk); rd_en = 0;

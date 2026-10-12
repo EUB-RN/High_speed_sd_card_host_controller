@@ -267,7 +267,7 @@ module tb_top_integration;
     axil_read(REG_LBA, value, response);
     progress = 22;
     check(value == 32'h1122_3344, "top-level AXI register write/read path");
-    axil_write(REG_CTRL_STATUS, 32'(32'h0000_0006 << IRQ_EN_LSB), 4'h8);
+    axil_write(REG_IRQ_EN, 32'h0000_0006, 4'h1);
     progress = 23;
 
     sd_cd = 0;
@@ -277,9 +277,9 @@ module tb_top_integration;
     while (!irq && timeout < 2500) begin @(posedge clk); timeout++; end
     check(irq, "debounced card insertion raises enabled CARD_CHANGE IRQ");
     progress = 4;
-    axil_read(REG_CTRL_STATUS, value, response);
+    axil_read(REG_IRQ_STAT, value, response);
     check(value[IRQ_STAT_LSB + IRQ_CARD_CHANGE_BIT], "CARD_CHANGE is latched in IRQ_STAT");
-    axil_write(REG_CTRL_STATUS, 32'(1 << (IRQ_STAT_LSB + IRQ_CARD_CHANGE_BIT)), 4'h4);
+    axil_write(REG_IRQ_STAT, 32'(1 << IRQ_CARD_CHANGE_BIT), 4'h1);
 
     // The first real whole-core gate: after debounce, the top must emit SD
     // clocks and consume the 74-edge ramp.  If this fails, waiting for CMD0
@@ -301,21 +301,24 @@ module tb_top_integration;
     card_model_done = dut.init_done;
     commands_seen = card_command_count;
     if (!card_model_done)
-      $display("card model debug: commands=%0d sys_phase=%0d ramp=%0d sd_clk=%b raw=%b div=%b init_div=%b sys_rst=%b en=%b ce=%b core_rst=%b init_state=%0d init_phase=%0d cmd_state=%0d err=%0d sd_cd=%b cd_raw=%b cd_count=%0d stable=%b present=%b",
+      $display("card model debug: commands=%0d sys_phase=%0d ramp=%0d sd_clk=%b raw=%b div=%b init_div=%b sys_rst=%b en=%b ce=%b sd_rst=%b soft_clr=%b init_state=%0d init_phase=%0d cmd_state=%0d err=%0d sd_cd=%b cd_raw=%b cd_count=%0d stable=%b present=%b",
                commands_seen, dut.u_sysctl.phase_q, dut.u_sysctl.ramp_cnt_q,
                sd_clk, dut.u_phy.sd_clk_div, dut.sd_clk_ratio,
                dut.init_clk_div, dut.sys_rst_n, dut.sd_clk_en, dut.u_phy.ce_q,
-               dut.core_rst_n, dut.u_cmd.init_mode_q, dut.u_cmd.init_phase_probe,
-               dut.u_cmd.state_q, dut.init_err_code, sd_cd, dut.u_sysctl.cd_raw,
+               dut.sd_rst_n, dut.soft_clr, dut.u_cmd.u_init.init_mode_q, dut.u_cmd.u_init.phase_q,
+               dut.u_cmd.u_engine.state_q, dut.init_err_code, sd_cd, dut.u_sysctl.cd_raw,
                dut.u_sysctl.cd_cnt_q, dut.u_sysctl.cd_stable_q,
                dut.card_present);
     check(card_model_done && card_command_count >= 13,
           "complete command and DAT paths finish the init ladder");
     progress = 5;
 
-    axil_read(REG_CTRL_STATUS, value, response);
+    axil_read(REG_STATUS, value, response);
     check(value[STATUS_CARD_PRES_BIT] && value[STATUS_CARD_RDY_BIT],
           "STATUS reports an initialized card");
+    // ERR is its own register (Table 5-1, 0x0C). It used to be a field of the
+    // same word as STATUS, so this was one read.
+    axil_read(REG_ERR, value, response);
     check(value[ERR_LSB +: 8] == ERR_OK,
           "full initialization completes without an error");
     axil_read(REG_CARD_BLK, value, response);
@@ -343,8 +346,8 @@ module tb_top_integration;
   initial begin
     #20_000_000;
     $display("timeout debug: progress=%0d commands=%0d phase=%0d init_state=%0d init_phase=%0d sd_clk=%b cmd=%b",
-             progress, commands_seen, dut.u_sysctl.phase_q, dut.u_cmd.init_mode_q,
-             dut.u_cmd.init_phase_probe, sd_clk, sd_cmd);
+             progress, commands_seen, dut.u_sysctl.phase_q, dut.u_cmd.u_init.init_mode_q,
+             dut.u_cmd.u_init.phase_q, sd_clk, sd_cmd);
     $fatal(1, "tb_top_integration timeout");
   end
 endmodule

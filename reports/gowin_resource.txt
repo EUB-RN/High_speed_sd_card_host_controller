@@ -1,0 +1,513 @@
+# ultra_sd_top post-P&R resource usage -- sign-off run (constr/ultra_sd.sdc)
+#
+# Table 9-1 budget: 2500 logic cells. Measured below.
+
+//Copyright (C)2014-2025 Gowin Semiconductor Corporation.
+//All rights reserved.
+
+
+1. PnR Messages
+
+  <Report Title>: PnR Report
+  <Design File>: /home/hpw/High_speed_sd_card_host_controller/syn/core_pnr/impl/gwsynthesis/project.vg
+  <Physical Constraints File>: /home/hpw/High_speed_sd_card_host_controller/syn/core_pnr/core_pnr_pins.cst
+  <Timing Constraints File>: /home/hpw/High_speed_sd_card_host_controller/constr/ultra_sd.sdc
+  <Tool Version>: V1.9.11.03 Education
+  <Part Number>: GW2A-LV18PG256C8/I7
+  <Device>: GW2A-18
+  <Device Version>: C
+  <Created Time>:Mon Oct 12 15:40:24 2026
+
+
+2. PnR Details
+
+  Running placement:
+    Placement Phase 0: CPU time = 0h 0m 0.206s, Elapsed time = 0h 0m 0.207s
+    Placement Phase 1: CPU time = 0h 0m 0.171s, Elapsed time = 0h 0m 0.171s
+    Placement Phase 2: CPU time = 0h 0m 0.302s, Elapsed time = 0h 0m 0.302s
+    Placement Phase 3: CPU time = 0h 0m 0.668s, Elapsed time = 0h 0m 0.669s
+    Total Placement: CPU time = 0h 0m 1s, Elapsed time = 0h 0m 1s
+ Running routing:
+    Routing Phase 0: CPU time = 0h 0m 0.001s, Elapsed time = 0h 0m 0.001s
+    Routing Phase 1: CPU time = 0h 0m 0.091s, Elapsed time = 0h 0m 0.091s
+    Routing Phase 2: CPU time = 0h 0m 1s, Elapsed time = 0h 0m 1s
+    Routing Phase 3: CPU time = 0h 0m 0s, Elapsed time = 0h 0m 0s
+    Total Routing: CPU time = 0h 0m 1s, Elapsed time = 0h 0m 1s
+ Generate output files:
+    CPU time = 0h 0m 0.851s, Elapsed time = 0h 0m 0.853s
+
+ Total Time and Memory Usage: CPU time = 0h 0m 4s, Elapsed time = 0h 0m 4s, Peak memory usage = 467MB
+
+
+3. Resource Usage Summary
+
+  --------------------------------------------------------------------------------
+  Resources                   | Usage                               | Utilization
+  --------------------------------------------------------------------------------
+  Logic                       | 2490/20736                          |  12%
+    --LUT,ALU,ROM16           | 2472(2372 LUT, 100 ALU, 0 ROM16)    | -
+    --SSRAM(RAM16)            | 3                                   | -
+  Register                    | 1325/16173                          |  9%
+    --Logic Register as Latch | 0/15552                             |  0%
+    --Logic Register as FF    | 1283/15552                          |  9%
+    --I/O Register as Latch   | 0/621                               |  0%
+    --I/O Register as FF      | 42/621                              |  7%
+  CLS                         | 1551/10368                          |  15%
+  I/O Port                    | 178/207                             |  86%
+  I/O Buf                     | 174                                 | -
+    --Input Buf               | 91                                  | -
+    --Output Buf              | 78                                  | -
+    --Inout Buf               | 5                                   | -
+  BSRAM                       | 2/46                                | 5%
+    --SDPB                    | 1
+    --SDPX9B                  | 1
+  ================================================================================
+
+
+
+4. I/O Bank Usage Summary
+
+  --------------------------------------
+  I/O Bank  | Usage       | Utilization 
+  --------------------------------------
+  bank 0   | 27/29       | 94%         
+  bank 1   | 18/20       | 90%         
+  bank 2   | 16/20       | 80%         
+  bank 3   | 22/32       | 69%         
+  bank 4   | 36/36       | 100%        
+  bank 5   | 36/36       | 100%        
+  bank 6   | 5/18        | 28%         
+  bank 7   | 14/16       | 88%         
+  ======================================
+
+
+5. Clock Resource Usage Summary
+
+  ------------------------------------------
+  Clock Resource| Usage         | Utilization 
+  ------------------------------------------
+  PRIMARY       | 3/8           | 38%
+  LW            | 4/8           | 50%
+  GCLK_PIN      | 8/8           | 100%
+  DQCE          | 1/24          | 5%
+  ==========================================
+
+
+6. Global Clock Signals
+
+  -------------------------------------------
+  Signal         | Global Clock   | Location
+  -------------------------------------------
+  clk_d          | PRIMARY        |  TR TL BR BL
+  sd_clk_d       | PRIMARY        |  TR TL BL BR
+  u_phy/sd_clk_div| PRIMARY        |  TR TL
+  sys_rst_n      | LW             |  -
+  sd_soft_clr    | LW             |  -
+  u_sysctl/sd_rst_n| LW             |  -
+  u_cmd/crc_q_6_9| LW             |  -
+  ===========================================
+
+
+7. Pinout by Port Name
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Port Name            | Diff Pair | Loc./Bank     | Constraint | Dir.  | Site     | CFG             | IO Type    | Drive | Pull Mode | PCI Clamp | Hysteresis | Open Drain | Vref       | Single Resistor | Diff Resistor | BankVccio 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+clk                  | -         | C8/6          | N          | in    | IOL29[A] | GCLKT_6         | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+rst_n                | -         | T11/2         | N          | in    | IOR24[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_awaddr[2]     | -         | L9/3          | N          | in    | IOR40[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_awaddr[3]     | -         | P8/3          | N          | in    | IOR42[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_awaddr[4]     | -         | T8/3          | N          | in    | IOR42[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_awaddr[5]     | -         | M6/3          | N          | in    | IOR44[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_awaddr[6]     | -         | G5/5          | N          | in    | IOB20[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_awaddr[7]     | -         | G4/5          | N          | in    | IOB20[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_awvalid       | -         | T5/4          | N          | in    | IOB54[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[0]      | -         | N6/3          | N          | in    | IOR51[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[1]      | -         | P6/3          | N          | in    | IOR53[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[2]      | -         | T6/3          | N          | in    | IOR53[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[3]      | -         | L8/3          | N          | in    | IOR44[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[4]      | -         | N7/3          | N          | in    | IOR47[B] | RPLL2_C_fb      | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[5]      | -         | R7/3          | N          | in    | IOR49[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[6]      | -         | P7/3          | N          | in    | IOR49[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[7]      | -         | R4/4          | N          | in    | IOB52[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[8]      | -         | R5/4          | N          | in    | IOB50[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[9]      | -         | R3/4          | N          | in    | IOB48[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[10]     | -         | T2/4          | N          | in    | IOB48[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[11]     | -         | T3/4          | N          | in    | IOB52[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[12]     | -         | P5/4          | N          | in    | IOB50[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[13]     | -         | P11/2         | N          | in    | IOR24[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[14]     | -         | M11/2         | N          | in    | IOR27[B] | GCLKC_2         | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[15]     | -         | T7/3          | N          | in    | IOR29[A] | GCLKT_3         | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_wdata[16]     | -         | T4/4          | N          | in    | IOB45[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[17]     | -         | R1/4          | N          | in    | IOB44[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[18]     | -         | P2/4          | N          | in    | IOB44[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[19]     | -         | P1/4          | N          | in    | IOB41[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[20]     | -         | K5/4          | N          | in    | IOB40[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[21]     | -         | L4/4          | N          | in    | IOB40[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[22]     | -         | K4/4          | N          | in    | IOB39[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[23]     | -         | K6/4          | N          | in    | IOB37[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[24]     | -         | N3/4          | N          | in    | IOB43[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[25]     | -         | M3/4          | N          | in    | IOB42[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[26]     | -         | N1/4          | N          | in    | IOB42[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[27]     | -         | L5/4          | N          | in    | IOB39[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[28]     | -         | L1/4          | N          | in    | IOB38[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[29]     | -         | L3/4          | N          | in    | IOB38[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[30]     | -         | J5/4          | N          | in    | IOB37[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wdata[31]     | -         | K3/4          | N          | in    | IOB36[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wstrb[0]      | -         | R6/4          | N          | in    | IOB54[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wstrb[1]      | -         | P4/4          | N          | in    | IOB45[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wstrb[2]      | -         | M2/4          | N          | in    | IOB43[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wstrb[3]      | -         | N2/4          | N          | in    | IOB41[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_wvalid        | -         | D3/5          | N          | in    | IOB9[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_bready        | -         | D1/5          | N          | in    | IOB9[B]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_araddr[2]     | -         | R9/3          | N          | in    | IOR35[A] | FASTRD_N/D3     | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_araddr[3]     | -         | T10/3         | N          | in    | IOR35[B] | SI/D2           | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_araddr[4]     | -         | N9/3          | N          | in    | IOR36[B] | SSPI_CS_N/D0    | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_araddr[5]     | -         | T9/3          | N          | in    | IOR38[A] | DIN/CLKHOLD_N   | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_araddr[6]     | -         | E6/6          | N          | in    | IOL53[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_araddr[7]     | -         | D7/6          | N          | in    | IOL53[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axil_arvalid       | -         | A5/5          | N          | in    | IOB7[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_rready        | -         | B6/5          | N          | in    | IOB7[B]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+m_axis_rd_tready     | -         | P9/3          | N          | in    | IOR38[B] | DOUT/WE_N       | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[0]   | -         | A8/6          | N          | in    | IOL29[B] | GCLKC_6         | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[1]   | -         | A9/7          | N          | in    | IOL27[A] | GCLKT_7         | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[2]   | -         | C9/7          | N          | in    | IOL27[B] | GCLKC_7         | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[3]   | -         | D11/7         | N          | in    | IOL22[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[4]   | -         | D10/7         | N          | in    | IOL17[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[5]   | -         | E10/7         | N          | in    | IOL17[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[6]   | -         | A11/7         | N          | in    | IOL15[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[7]   | -         | B11/7         | N          | in    | IOL13[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[8]   | -         | A12/7         | N          | in    | IOL13[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[9]   | -         | F10/7         | N          | in    | IOL11[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[10]  | -         | B13/7         | N          | in    | IOL8[A]  | LPLL1_T_fb      | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[11]  | -         | A14/7         | N          | in    | IOL8[B]  | LPLL1_C_fb      | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[12]  | -         | C12/7         | N          | in    | IOL7[A]  | LPLL1_T_in      | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[13]  | -         | B12/7         | N          | in    | IOL7[B]  | LPLL1_C_in      | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[14]  | -         | B14/7         | N          | in    | IOL2[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tdata[15]  | -         | L15/0         | N          | in    | IOT2[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[16]  | -         | D16/0         | N          | in    | IOT4[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[17]  | -         | E14/0         | N          | in    | IOT4[B]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[18]  | -         | C16/0         | N          | in    | IOT5[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[19]  | -         | E16/0         | N          | in    | IOT6[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[20]  | -         | F15/0         | N          | in    | IOT6[B]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[21]  | -         | F13/0         | N          | in    | IOT8[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[22]  | -         | G12/0         | N          | in    | IOT8[B]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[23]  | -         | F14/0         | N          | in    | IOT9[A]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[24]  | -         | F16/0         | N          | in    | IOT9[B]  | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[25]  | -         | F12/0         | N          | in    | IOT12[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[26]  | -         | G13/0         | N          | in    | IOT12[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[27]  | -         | G15/0         | N          | in    | IOT13[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[28]  | -         | G14/0         | N          | in    | IOT13[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[29]  | -         | G11/0         | N          | in    | IOT14[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[30]  | -         | H12/0         | N          | in    | IOT14[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tdata[31]  | -         | H15/0         | N          | in    | IOT16[B] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axis_wr_tvalid     | -         | R11/2         | N          | in    | IOR17[A] | -               | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tlast      | -         | R8/3          | N          | in    | IOR29[B] | GCLKC_3         | LVCMOS33   | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3       
+sd_cd                | -         | D15/0         | Y          | in    | IOT5[B]  | -               | LVCMOS33   | NA    | NONE      | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3       
+s_axil_awready       | -         | K2/4          | N          | out   | IOB36[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_wready        | -         | B1/5          | N          | out   | IOB8[A]  | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_bresp[0]      | -         | T12/2         | N          | out   | IOR17[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+s_axil_bresp[1]      | -         | F3/5          | N          | out   | IOB19[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_bvalid        | -         | C2/5          | N          | out   | IOB8[B]  | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_arready       | -         | A3/5          | N          | out   | IOB4[A]  | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[0]      | -         | F4/5          | N          | out   | IOB18[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[1]      | -         | D6/5          | N          | out   | IOB3[A]  | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[2]      | -         | E7/5          | N          | out   | IOB3[B]  | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[3]      | -         | A4/5          | N          | out   | IOB2[A]  | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[4]      | -         | C5/5          | N          | out   | IOB2[B]  | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[5]      | -         | G6/5          | N          | out   | IOB18[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[6]      | -         | C1/5          | N          | out   | IOB14[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[7]      | -         | D2/5          | N          | out   | IOB14[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[8]      | -         | F5/5          | N          | out   | IOB22[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[9]      | -         | B3/5          | N          | out   | IOB13[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[10]     | -         | H4/5          | N          | out   | IOB26[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[11]     | -         | J6/5          | N          | out   | IOB26[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[12]     | -         | E1/5          | N          | out   | IOB16[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[13]     | -         | F2/5          | N          | out   | IOB16[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[14]     | -         | A2/5          | N          | out   | IOB13[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[15]     | -         | G1/5          | N          | out   | IOB24[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[16]     | -         | H2/5          | N          | out   | IOB24[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[17]     | -         | H6/5          | N          | out   | IOB22[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[18]     | -         | G2/5          | N          | out   | IOB21[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[19]     | -         | L2/4          | N          | out   | IOB30[A] | GCLKT_4         | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[20]     | -         | M1/4          | N          | out   | IOB30[B] | GCLKC_4         | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[21]     | -         | J1/5          | N          | out   | IOB27[A] | GCLKT_5         | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[22]     | -         | G3/5          | N          | out   | IOB21[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[23]     | -         | H5/4          | N          | out   | IOB35[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[24]     | -         | K1/4          | N          | out   | IOB34[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[25]     | -         | H3/4          | N          | out   | IOB32[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[26]     | -         | E2/5          | N          | out   | IOB12[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[27]     | -         | E3/5          | N          | out   | IOB12[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[28]     | -         | H1/4          | N          | out   | IOB32[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[29]     | -         | J4/4          | N          | out   | IOB35[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[30]     | -         | J3/5          | N          | out   | IOB27[B] | GCLKC_5         | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rdata[31]     | -         | J2/4          | N          | out   | IOB34[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+s_axil_rresp[0]      | -         | R13/2         | N          | out   | IOR20[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+s_axil_rresp[1]      | -         | C4/6          | N          | out   | IOL47[A] | LPLL2_T_fb      | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+s_axil_rvalid        | -         | B4/5          | N          | out   | IOB4[B]  | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[0]   | -         | H13/0         | N          | out   | IOT18[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[1]   | -         | J12/0         | N          | out   | IOT18[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[2]   | -         | H14/0         | N          | out   | IOT20[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[3]   | -         | H16/0         | N          | out   | IOT20[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[4]   | -         | J16/0         | N          | out   | IOT22[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[5]   | -         | J14/0         | N          | out   | IOT22[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[6]   | -         | J15/0         | N          | out   | IOT24[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[7]   | -         | H11/0         | N          | out   | IOT27[A] | GCLKT_0         | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[8]   | -         | J13/0         | N          | out   | IOT27[B] | GCLKC_0         | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[9]   | -         | K14/1         | N          | out   | IOT30[A] | GCLKT_1         | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[10]  | -         | K15/1         | N          | out   | IOT30[B] | GCLKC_1         | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[11]  | -         | J11/1         | N          | out   | IOT32[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[12]  | -         | L12/1         | N          | out   | IOT32[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[13]  | -         | L16/1         | N          | out   | IOT34[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[14]  | -         | L14/1         | N          | out   | IOT34[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[15]  | -         | K12/1         | N          | out   | IOT36[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[16]  | -         | K11/1         | N          | out   | IOT38[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[17]  | -         | L13/1         | N          | out   | IOT38[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[18]  | -         | M14/1         | N          | out   | IOT40[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[19]  | -         | M15/1         | N          | out   | IOT40[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[20]  | -         | D14/1         | N          | out   | IOT44[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[21]  | -         | E15/1         | N          | out   | IOT44[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[22]  | -         | N15/1         | N          | out   | IOT48[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[23]  | -         | N16/1         | N          | out   | IOT52[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[24]  | -         | N14/1         | N          | out   | IOT52[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[25]  | -         | P15/1         | N          | out   | IOT54[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[26]  | -         | R16/1         | N          | out   | IOT54[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+m_axis_rd_tdata[27]  | -         | T15/2         | N          | out   | IOR7[A]  | RPLL1_T_in      | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+m_axis_rd_tdata[28]  | -         | P12/2         | N          | out   | IOR8[A]  | RPLL1_T_fb      | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+m_axis_rd_tdata[29]  | -         | T13/2         | N          | out   | IOR8[B]  | RPLL1_C_fb      | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+m_axis_rd_tdata[30]  | -         | R12/2         | N          | out   | IOR11[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+m_axis_rd_tdata[31]  | -         | P13/2         | N          | out   | IOR11[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+m_axis_rd_tvalid     | -         | C10/3         | N          | out   | IOR39[A] | SCLK            | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+m_axis_rd_tlast      | -         | N8/3          | N          | out   | IOR40[A] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+s_axis_wr_tready     | -         | T14/2         | N          | out   | IOR20[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+irq                  | -         | F1/5          | N          | out   | IOB19[B] | -               | LVCMOS33   | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3       
+sd_clk               | -         | N10/2         | Y          | out   | IOR27[A] | GCLKT_2         | LVCMOS33   | 8     | NONE      | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3       
+sd_cmd               | -         | R14/2         | Y          | io    | IOR7[B]  | RPLL1_C_in      | LVCMOS33   | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3       
+sd_dat[0]            | -         | M8/3          | Y          | io    | IOR36[A] | SO/D1           | LVCMOS33   | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3       
+sd_dat[1]            | -         | M7/3          | Y          | io    | IOR47[A] | RPLL2_T_fb      | LVCMOS33   | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3       
+sd_dat[2]            | -         | M10/2         | Y          | io    | IOR22[A] | -               | LVCMOS33   | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3       
+sd_dat[3]            | -         | N11/2         | Y          | io    | IOR22[B] | -               | LVCMOS33   | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3       
+============================================================================================================================================================================================================================
+
+
+
+
+8. All Package Pins
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Loc./Bank| Signal               | Dir.  | Site     | CFG             | IO Type  | Drive | Pull Mode | PCI Clamp | Hysteresis | Open Drain | Vref       | Single Resistor | Diff Resistor | Bank Vccio
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+L15/0    | s_axis_wr_tdata[15]  | in    | IOT2[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+D16/0    | s_axis_wr_tdata[16]  | in    | IOT4[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+E14/0    | s_axis_wr_tdata[17]  | in    | IOT4[B]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+C16/0    | s_axis_wr_tdata[18]  | in    | IOT5[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+D15/0    | sd_cd                | in    | IOT5[B]  | -               | LVCMOS33 | NA    | NONE      | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+E16/0    | s_axis_wr_tdata[19]  | in    | IOT6[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+F15/0    | s_axis_wr_tdata[20]  | in    | IOT6[B]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+F13/0    | s_axis_wr_tdata[21]  | in    | IOT8[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+G12/0    | s_axis_wr_tdata[22]  | in    | IOT8[B]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+F14/0    | s_axis_wr_tdata[23]  | in    | IOT9[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+F16/0    | s_axis_wr_tdata[24]  | in    | IOT9[B]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+F12/0    | s_axis_wr_tdata[25]  | in    | IOT12[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+G13/0    | s_axis_wr_tdata[26]  | in    | IOT12[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+G15/0    | s_axis_wr_tdata[27]  | in    | IOT13[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+G14/0    | s_axis_wr_tdata[28]  | in    | IOT13[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+G11/0    | s_axis_wr_tdata[29]  | in    | IOT14[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+H12/0    | s_axis_wr_tdata[30]  | in    | IOT14[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+G16/0    | -                    | in    | IOT16[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+H15/0    | s_axis_wr_tdata[31]  | in    | IOT16[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+H13/0    | m_axis_rd_tdata[0]   | out   | IOT18[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J12/0    | m_axis_rd_tdata[1]   | out   | IOT18[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+H14/0    | m_axis_rd_tdata[2]   | out   | IOT20[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+H16/0    | m_axis_rd_tdata[3]   | out   | IOT20[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J16/0    | m_axis_rd_tdata[4]   | out   | IOT22[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J14/0    | m_axis_rd_tdata[5]   | out   | IOT22[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J15/0    | m_axis_rd_tdata[6]   | out   | IOT24[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+K16/0    | -                    | in    | IOT24[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+H11/0    | m_axis_rd_tdata[7]   | out   | IOT27[A] | GCLKT_0         | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J13/0    | m_axis_rd_tdata[8]   | out   | IOT27[B] | GCLKC_0         | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+K14/1    | m_axis_rd_tdata[9]   | out   | IOT30[A] | GCLKT_1         | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+K15/1    | m_axis_rd_tdata[10]  | out   | IOT30[B] | GCLKC_1         | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J11/1    | m_axis_rd_tdata[11]  | out   | IOT32[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+L12/1    | m_axis_rd_tdata[12]  | out   | IOT32[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+L16/1    | m_axis_rd_tdata[13]  | out   | IOT34[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+L14/1    | m_axis_rd_tdata[14]  | out   | IOT34[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+K13/1    | -                    | in    | IOT36[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+K12/1    | m_axis_rd_tdata[15]  | out   | IOT36[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+K11/1    | m_axis_rd_tdata[16]  | out   | IOT38[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+L13/1    | m_axis_rd_tdata[17]  | out   | IOT38[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+M14/1    | m_axis_rd_tdata[18]  | out   | IOT40[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+M15/1    | m_axis_rd_tdata[19]  | out   | IOT40[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+D14/1    | m_axis_rd_tdata[20]  | out   | IOT44[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+E15/1    | m_axis_rd_tdata[21]  | out   | IOT44[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+N15/1    | m_axis_rd_tdata[22]  | out   | IOT48[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+P16/1    | -                    | in    | IOT48[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+N16/1    | m_axis_rd_tdata[23]  | out   | IOT52[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+N14/1    | m_axis_rd_tdata[24]  | out   | IOT52[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+P15/1    | m_axis_rd_tdata[25]  | out   | IOT54[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+R16/1    | m_axis_rd_tdata[26]  | out   | IOT54[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+A4/5     | s_axil_rdata[3]      | out   | IOB2[A]  | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+C5/5     | s_axil_rdata[4]      | out   | IOB2[B]  | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+D6/5     | s_axil_rdata[1]      | out   | IOB3[A]  | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+E7/5     | s_axil_rdata[2]      | out   | IOB3[B]  | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+A3/5     | s_axil_arready       | out   | IOB4[A]  | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+B4/5     | s_axil_rvalid        | out   | IOB4[B]  | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+A5/5     | s_axil_arvalid       | in    | IOB7[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+B6/5     | s_axil_rready        | in    | IOB7[B]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+B1/5     | s_axil_wready        | out   | IOB8[A]  | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+C2/5     | s_axil_bvalid        | out   | IOB8[B]  | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+D3/5     | s_axil_wvalid        | in    | IOB9[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+D1/5     | s_axil_bready        | in    | IOB9[B]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+E2/5     | s_axil_rdata[26]     | out   | IOB12[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+E3/5     | s_axil_rdata[27]     | out   | IOB12[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+B3/5     | s_axil_rdata[9]      | out   | IOB13[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+A2/5     | s_axil_rdata[14]     | out   | IOB13[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+C1/5     | s_axil_rdata[6]      | out   | IOB14[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+D2/5     | s_axil_rdata[7]      | out   | IOB14[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+E1/5     | s_axil_rdata[12]     | out   | IOB16[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+F2/5     | s_axil_rdata[13]     | out   | IOB16[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+F4/5     | s_axil_rdata[0]      | out   | IOB18[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+G6/5     | s_axil_rdata[5]      | out   | IOB18[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+F3/5     | s_axil_bresp[1]      | out   | IOB19[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+F1/5     | irq                  | out   | IOB19[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+G5/5     | s_axil_awaddr[6]     | in    | IOB20[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+G4/5     | s_axil_awaddr[7]     | in    | IOB20[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+G2/5     | s_axil_rdata[18]     | out   | IOB21[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+G3/5     | s_axil_rdata[22]     | out   | IOB21[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+F5/5     | s_axil_rdata[8]      | out   | IOB22[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+H6/5     | s_axil_rdata[17]     | out   | IOB22[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+G1/5     | s_axil_rdata[15]     | out   | IOB24[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+H2/5     | s_axil_rdata[16]     | out   | IOB24[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+H4/5     | s_axil_rdata[10]     | out   | IOB26[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J6/5     | s_axil_rdata[11]     | out   | IOB26[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J1/5     | s_axil_rdata[21]     | out   | IOB27[A] | GCLKT_5         | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J3/5     | s_axil_rdata[30]     | out   | IOB27[B] | GCLKC_5         | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+L2/4     | s_axil_rdata[19]     | out   | IOB30[A] | GCLKT_4         | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+M1/4     | s_axil_rdata[20]     | out   | IOB30[B] | GCLKC_4         | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+H3/4     | s_axil_rdata[25]     | out   | IOB32[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+H1/4     | s_axil_rdata[28]     | out   | IOB32[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J2/4     | s_axil_rdata[31]     | out   | IOB34[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+K1/4     | s_axil_rdata[24]     | out   | IOB34[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+H5/4     | s_axil_rdata[23]     | out   | IOB35[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J4/4     | s_axil_rdata[29]     | out   | IOB35[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+K3/4     | s_axil_wdata[31]     | in    | IOB36[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+K2/4     | s_axil_awready       | out   | IOB36[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+J5/4     | s_axil_wdata[30]     | in    | IOB37[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+K6/4     | s_axil_wdata[23]     | in    | IOB37[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+L1/4     | s_axil_wdata[28]     | in    | IOB38[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+L3/4     | s_axil_wdata[29]     | in    | IOB38[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+K4/4     | s_axil_wdata[22]     | in    | IOB39[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+L5/4     | s_axil_wdata[27]     | in    | IOB39[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+K5/4     | s_axil_wdata[20]     | in    | IOB40[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+L4/4     | s_axil_wdata[21]     | in    | IOB40[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+N2/4     | s_axil_wstrb[3]      | in    | IOB41[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+P1/4     | s_axil_wdata[19]     | in    | IOB41[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+M3/4     | s_axil_wdata[25]     | in    | IOB42[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+N1/4     | s_axil_wdata[26]     | in    | IOB42[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+M2/4     | s_axil_wstrb[2]      | in    | IOB43[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+N3/4     | s_axil_wdata[24]     | in    | IOB43[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+R1/4     | s_axil_wdata[17]     | in    | IOB44[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+P2/4     | s_axil_wdata[18]     | in    | IOB44[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+P4/4     | s_axil_wstrb[1]      | in    | IOB45[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+T4/4     | s_axil_wdata[16]     | in    | IOB45[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+R3/4     | s_axil_wdata[9]      | in    | IOB48[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+T2/4     | s_axil_wdata[10]     | in    | IOB48[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+P5/4     | s_axil_wdata[12]     | in    | IOB50[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+R5/4     | s_axil_wdata[8]      | in    | IOB50[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+R4/4     | s_axil_wdata[7]      | in    | IOB52[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+T3/4     | s_axil_wdata[11]     | in    | IOB52[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+R6/4     | s_axil_wstrb[0]      | in    | IOB54[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+T5/4     | s_axil_awvalid       | in    | IOB54[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+B14/7    | s_axis_wr_tdata[14]  | in    | IOL2[A]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+A15/7    | -                    | in    | IOL2[B]  | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+C12/7    | s_axis_wr_tdata[12]  | in    | IOL7[A]  | LPLL1_T_in      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+B12/7    | s_axis_wr_tdata[13]  | in    | IOL7[B]  | LPLL1_C_in      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+B13/7    | s_axis_wr_tdata[10]  | in    | IOL8[A]  | LPLL1_T_fb      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+A14/7    | s_axis_wr_tdata[11]  | in    | IOL8[B]  | LPLL1_C_fb      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+F10/7    | s_axis_wr_tdata[9]   | in    | IOL11[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+B11/7    | s_axis_wr_tdata[7]   | in    | IOL13[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+A12/7    | s_axis_wr_tdata[8]   | in    | IOL13[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+A11/7    | s_axis_wr_tdata[6]   | in    | IOL15[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+C11/7    | -                    | in    | IOL15[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+D10/7    | s_axis_wr_tdata[4]   | in    | IOL17[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+E10/7    | s_axis_wr_tdata[5]   | in    | IOL17[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+D11/7    | s_axis_wr_tdata[3]   | in    | IOL22[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+A9/7     | s_axis_wr_tdata[1]   | in    | IOL27[A] | GCLKT_7         | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+C9/7     | s_axis_wr_tdata[2]   | in    | IOL27[B] | GCLKC_7         | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+C8/6     | clk                  | in    | IOL29[A] | GCLKT_6         | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+A8/6     | s_axis_wr_tdata[0]   | in    | IOL29[B] | GCLKC_6         | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+F9/6     | -                    | in    | IOL31[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+E11/6    | -                    | in    | IOL31[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+B9/6     | -                    | in    | IOL33[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+A10/6    | -                    | in    | IOL33[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+F8/6     | -                    | in    | IOL35[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+D9/6     | -                    | in    | IOL35[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+D8/6     | -                    | in    | IOL38[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+E9/6     | -                    | in    | IOL38[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+B7/6     | -                    | in    | IOL40[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+C7/6     | -                    | in    | IOL40[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+F7/6     | -                    | in    | IOL45[A] | LPLL2_T_in      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+E8/6     | -                    | in    | IOL45[B] | LPLL2_C_in      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+C4/6     | s_axil_rresp[1]      | out   | IOL47[A] | LPLL2_T_fb      | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+B5/6     | -                    | in    | IOL47[B] | LPLL2_C_fb      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+E6/6     | s_axil_araddr[6]     | in    | IOL53[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+D7/6     | s_axil_araddr[7]     | in    | IOL53[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+T15/2    | m_axis_rd_tdata[27]  | out   | IOR7[A]  | RPLL1_T_in      | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+R14/2    | sd_cmd               | io    | IOR7[B]  | RPLL1_C_in      | LVCMOS33 | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3  
+P12/2    | m_axis_rd_tdata[28]  | out   | IOR8[A]  | RPLL1_T_fb      | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+T13/2    | m_axis_rd_tdata[29]  | out   | IOR8[B]  | RPLL1_C_fb      | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+R12/2    | m_axis_rd_tdata[30]  | out   | IOR11[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+P13/2    | m_axis_rd_tdata[31]  | out   | IOR11[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+R11/2    | s_axis_wr_tvalid     | in    | IOR17[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+T12/2    | s_axil_bresp[0]      | out   | IOR17[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+R13/2    | s_axil_rresp[0]      | out   | IOR20[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+T14/2    | s_axis_wr_tready     | out   | IOR20[B] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+M10/2    | sd_dat[2]            | io    | IOR22[A] | -               | LVCMOS33 | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3  
+N11/2    | sd_dat[3]            | io    | IOR22[B] | -               | LVCMOS33 | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3  
+T11/2    | rst_n                | in    | IOR24[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+P11/2    | s_axil_wdata[13]     | in    | IOR24[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+C6/2     | -                    | out   | IOR25[A] | TDO             | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | NA              | NA            | 3.3  
+B8/2     | -                    | in    | IOR25[B] | TMS             | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+A7/2     | -                    | in    | IOR26[A] | TCK             | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+A6/2     | -                    | in    | IOR26[B] | TDI             | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+N10/2    | sd_clk               | out   | IOR27[A] | GCLKT_2         | LVCMOS33 | 8     | NONE      | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+M11/2    | s_axil_wdata[14]     | in    | IOR27[B] | GCLKC_2         | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+T7/3     | s_axil_wdata[15]     | in    | IOR29[A] | GCLKT_3         | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+R8/3     | s_axis_wr_tlast      | in    | IOR29[B] | GCLKC_3         | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+M16/3    | -                    | in    | IOR30[A] | MODE0           | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+B16/3    | -                    | in    | IOR30[B] | MODE1           | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+C15/3    | -                    | in    | IOR31[A] | MODE2           | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+B10/3    | -                    | in    | IOR31[B] | RECONFIG_N      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+A13/3    | -                    | in    | IOR32[A] | READY           | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+C13/3    | -                    | in    | IOR32[B] | DONE            | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+P10/3    | -                    | in    | IOR33[A] | MI/D7           | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+R10/3    | -                    | in    | IOR33[B] | MO/D6           | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+M9/3     | -                    | in    | IOR34[A] | MCS_N/D5        | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+L10/3    | -                    | in    | IOR34[B] | MCLK/D4         | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | NA              | NA            | 3.3  
+R9/3     | s_axil_araddr[2]     | in    | IOR35[A] | FASTRD_N/D3     | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+T10/3    | s_axil_araddr[3]     | in    | IOR35[B] | SI/D2           | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+M8/3     | sd_dat[0]            | io    | IOR36[A] | SO/D1           | LVCMOS33 | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3  
+N9/3     | s_axil_araddr[4]     | in    | IOR36[B] | SSPI_CS_N/D0    | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+T9/3     | s_axil_araddr[5]     | in    | IOR38[A] | DIN/CLKHOLD_N   | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+P9/3     | m_axis_rd_tready     | in    | IOR38[B] | DOUT/WE_N       | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+C10/3    | m_axis_rd_tvalid     | out   | IOR39[A] | SCLK            | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+N8/3     | m_axis_rd_tlast      | out   | IOR40[A] | -               | LVCMOS33 | 8     | UP        | NA        | NA         | OFF        | NA         | OFF             | NA            | 3.3  
+L9/3     | s_axil_awaddr[2]     | in    | IOR40[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+P8/3     | s_axil_awaddr[3]     | in    | IOR42[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+T8/3     | s_axil_awaddr[4]     | in    | IOR42[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+M6/3     | s_axil_awaddr[5]     | in    | IOR44[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+L8/3     | s_axil_wdata[3]      | in    | IOR44[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+M7/3     | sd_dat[1]            | io    | IOR47[A] | RPLL2_T_fb      | LVCMOS33 | 8     | NONE      | NA        | NONE       | OFF        | NA         | OFF             | NA            | 3.3  
+N7/3     | s_axil_wdata[4]      | in    | IOR47[B] | RPLL2_C_fb      | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+R7/3     | s_axil_wdata[5]      | in    | IOR49[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+P7/3     | s_axil_wdata[6]      | in    | IOR49[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+N6/3     | s_axil_wdata[0]      | in    | IOR51[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+P6/3     | s_axil_wdata[1]      | in    | IOR53[A] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+T6/3     | s_axil_wdata[2]      | in    | IOR53[B] | -               | LVCMOS33 | NA    | UP        | ON        | NONE       | NA         | NA         | OFF             | NA            | 3.3  
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+=================================================================================================================================================================================================
+
+

@@ -2,6 +2,8 @@
 
 module tb_ultra_sd_cmd;
   import ultra_sd_pkg::*;
+  // Yazilim clear'i bu testin konusu degil: sabit 0.
+  logic soft_clr = 1'b0;
 
   logic cmd_clk = 0, rst_n;
   logic req_valid_i, req_is_acmd_i, req_ready_o;
@@ -13,25 +15,8 @@ module tb_ultra_sd_cmd;
   err_e err_o;
   logic card_ready_o;
 
-  // Baslatma merdiveni artik ayni modulde. Bu test SALT komut motorunu
-  // siniyor: kart yok + rampa yok => merdiven I_IDLE'da kalir, init_active
-  // alcaktir ve dis istek portu eskisi gibi hatta sahiptir. (rca_i portu yok
-  // artik: CMD55 argumani merdivenin kendi rca_q'sundan geliyor.)
-  logic card_present_i = 1'b0, ramp_done_i = 1'b0;
-  // Table 7-1 geri cekilme bitleri; bu tb komut motorunu olcuyor,
-  // merdivenin konfigurasyonunu degil, o yuzden ikisi de pasif.
-  logic force_1bit_i = 1'b0, force_ds_i = 1'b0;
-  logic init_busy_o, init_done_o, init_err_o;
-  err_e init_err_code_o;
-  logic dat_rd_start_o;
-  logic [10:0] dat_rd_bytes_o;
-  logic [31:0] dat_rd_data_i = 32'h0;
-  logic dat_rd_valid_i = 1'b0, dat_rd_busy_i = 1'b0, dat_rd_crc_ok_i = 1'b1;
-  logic [15:0] rca_o;
-  logic [31:0] card_blk_o;
-  logic block_addr_o, bus_4bit_o;
-  speed_e speed_o;
-  logic [CFG_CLK_W-1:0] clk_div_o;
+  logic [15:0] rca_i = 16'b0;
+  logic rsp_frame_done_o;
   // Komut tekrarlarini artik DUT'un KENDISI sayiyor: sayac C_RETRY kolunun
   // yaninda, ultra_sd_cmd icinde (R-IF-11). Burada ham darbeyi tb'de toplamak
   // yerine o sayaci dogrudan okuyoruz -- olculen sey registerin gorecegi sey.
@@ -60,7 +45,7 @@ module tb_ultra_sd_cmd;
       int t;
       t = 0;
       while (!req_ready_o && t < 4000) begin @(posedge cmd_clk); t++; end
-      // Bounded on purpose: req_ready_o is !init_owns && cmd_idle, so a wedged
+      // Bounded on purpose: req_ready_o indicates an idle engine, so a wedged
       // command FSM holds it low forever. An unbounded wait here spins on a
       // running clock and the test never reaches its verdict -- no FAILED, no
       // exit, just a hung job.
@@ -71,6 +56,10 @@ module tb_ultra_sd_cmd;
     req_is_acmd_i = 0; req_valid_i = 1;
     @(posedge cmd_clk); #1;
     @(negedge cmd_clk); req_valid_i = 0;
+    // A real ready/valid request ends at acceptance. Poison the producer bus
+    // before C_LOAD; frame contents and later retries must use the snapshot.
+    req_index_i = 6'd63; req_arg_i = 32'hDEAD_BEEF;
+    req_resp_i = RESP_NONE; req_is_acmd_i = 1'b1;
   endtask
 
   initial begin
@@ -108,6 +97,9 @@ module tb_ultra_sd_cmd;
     check(timeout < 180, "response timeout is bounded");
     check(rsp_err_o && err_o == ERR_CMD_TIMEOUT, "timeout error code");
     check(retry_events == 1, "one retry event reported");
+
+    @(posedge cmd_clk); #1;
+    check(!rsp_valid_o, "completion is a one-cycle pulse even with no next request");
 
     if (failures) begin
       $display("tb_ultra_sd_cmd: FAILED (%0d/%0d)", failures, checks);

@@ -18,7 +18,6 @@ module tb_init_cmd_stack;
   int retry_count;
   logic [15:0] rca;
   logic [31:0] card_blocks;
-  logic block_addr;
   speed_e speed;
   logic bus_4bit;
   logic [CFG_CLK_W-1:0] clk_div;
@@ -36,13 +35,13 @@ module tb_init_cmd_stack;
   // arbitrasyon mux'unun aynisi); o kablolar modulun icine girdigi icin burada
   // hicbiri kalmadi. Sinanan sey degismedi: merdiven gercek CMD hatti uzerinde
   // kosuyor ve kart davranissal olarak yanitliyor.
-  ultra_sd_cmd #(
+  ultra_sd_protocol #(
     .NCR_TIMEOUT_CLK(16), .NCC_GAP_CLK(2), .CMD_RETRIES(1),
     .CLK_DIV_INIT(20), .CLK_DIV_DS(4), .CLK_DIV_HS(2),
     .ACMD41_TIMEOUT_CLK(100), .DAT_TIMEOUT_CLK(100),
     .SCR_CHECK(1'b0), .HS_ENABLE(1'b0)
   ) u_cmd (
-    .cmd_clk, .rst_n,
+    .cmd_clk, .rst_n, .soft_clr(1'b0),
 
     // L3 istek portu bu testte bos: merdiven hatta sahip.
     .req_valid_i(1'b0), .req_index_i(6'd0), .req_arg_i(32'h0),
@@ -59,7 +58,7 @@ module tb_init_cmd_stack;
     .dat_rd_data_i(32'h0), .dat_rd_valid_i(1'b0), .dat_rd_busy_i(1'b0),
     .dat_rd_crc_ok_i(1'b1),
 
-    .rca_o(rca), .card_blk_o(card_blocks), .block_addr_o(block_addr),
+    .rca_o(rca), .card_blk_o(card_blocks),
     .speed_o(speed), .bus_4bit_o(bus_4bit), .clk_div_o(clk_div),
 
     .stat_clear_tgl_i(1'b0), .stat_retry_cmd_o(stat_retry_cmd),
@@ -155,7 +154,7 @@ module tb_init_cmd_stack;
     repeat (10) @(posedge cmd_clk); #1;
     check(init_done && !init_err && init_error == ERR_OK,
           "combined init+command stack completes");
-    check(rca == 16'h1234 && block_addr && card_blocks == 32'd1048576,
+    check(rca == 16'h1234 && card_blocks == 32'd1048576,
           "combined response decoding");
     check(bus_4bit && speed == SPEED_DS && retry_count == 0,
           "combined negotiated mode without retries");

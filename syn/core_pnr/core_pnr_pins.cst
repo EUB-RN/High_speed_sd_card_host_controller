@@ -1,0 +1,219 @@
+// ----------------------------------------------------------------------------
+// core_pnr_pins.cst -- physical constraints for the CORE-ONLY place and route.
+//
+// This build exists to measure the core's own Fmax and its post-P&R
+// utilisation, independently of the benchmark wrapper. ultra_sd_top's AXI
+// ports never reach a pad in a real system, so they are deliberately left
+// unplaced and the placer spreads them wherever it likes.
+//
+// What they are NOT left to chance on is the IO standard. Before this file
+// existed the build named a sd_pins.cst that was not in the repository, so
+// every pad -- the SD slot included -- came out at the default LVCMOS18 in a
+// random bank, and the SD pad output delay in the timing report was a number
+// from a configuration that cannot exist on this board (tINS 4.582 ns against
+// 3.684 for the real LVCMOS33 DRIVE=8 pad). The pad output paths of the SD
+// slot are the only place in the whole project where STA actually checks the
+// interface against the card -- the benchmark build does not analyse them at
+// all -- so getting their electrical model right is the difference between a
+// timing report that means something and one that does not.
+//
+// Therefore:
+//   * the seven SD slot signals are pinned exactly as constr/ultra_sd.cst
+//     pins them, at LVCMOS33 DRIVE=8 PULL_MODE=NONE (Table 2-2, Table 2-3);
+//   * every other port is given IO_TYPE=LVCMOS33 and nothing else, so that
+//     all banks carry one VCCIO and the placer is not asked to put a 1.8 V
+//     pad in a 3.3 V bank -- which is what made the first attempt fail with
+//     "41 IOBUF(s) unPlaced".
+//
+// constr/ultra_sd.cst stays the single source of truth for the slot; if the
+// two ever disagree, that one is right and this one is the bug.
+// ----------------------------------------------------------------------------
+
+// ---- SD slot: real pins, real IO standard (mirrors constr/ultra_sd.cst) ----
+IO_LOC  "sd_clk"    N10;
+IO_PORT "sd_clk"    IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_cmd"    R14;
+IO_PORT "sd_cmd"    IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_dat[0]" M8;
+IO_PORT "sd_dat[0]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_dat[1]" M7;
+IO_PORT "sd_dat[1]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_dat[2]" M10;
+IO_PORT "sd_dat[2]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_dat[3]" N11;
+IO_PORT "sd_dat[3]" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8;
+IO_LOC  "sd_cd"     D15;
+IO_PORT "sd_cd"     IO_TYPE=LVCMOS33 PULL_MODE=NONE;
+
+// ---- everything else: bank voltage only, placement free -------------------
+IO_PORT "clk" IO_TYPE=LVCMOS33;
+IO_PORT "rst_n" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awaddr[0]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awaddr[1]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awaddr[2]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awaddr[3]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awaddr[4]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awaddr[5]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awaddr[6]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awaddr[7]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awvalid" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_awready" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[0]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[1]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[2]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[3]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[4]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[5]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[6]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[7]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[8]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[9]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[10]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[11]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[12]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[13]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[14]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[15]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[16]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[17]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[18]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[19]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[20]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[21]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[22]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[23]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[24]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[25]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[26]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[27]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[28]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[29]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[30]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wdata[31]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wstrb[0]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wstrb[1]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wstrb[2]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wstrb[3]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wvalid" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_wready" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_bresp[0]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_bresp[1]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_bvalid" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_bready" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_araddr[0]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_araddr[1]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_araddr[2]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_araddr[3]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_araddr[4]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_araddr[5]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_araddr[6]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_araddr[7]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_arvalid" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_arready" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[0]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[1]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[2]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[3]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[4]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[5]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[6]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[7]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[8]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[9]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[10]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[11]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[12]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[13]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[14]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[15]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[16]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[17]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[18]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[19]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[20]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[21]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[22]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[23]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[24]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[25]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[26]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[27]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[28]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[29]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[30]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rdata[31]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rresp[0]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rresp[1]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rvalid" IO_TYPE=LVCMOS33;
+IO_PORT "s_axil_rready" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[0]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[1]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[2]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[3]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[4]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[5]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[6]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[7]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[8]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[9]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[10]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[11]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[12]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[13]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[14]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[15]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[16]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[17]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[18]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[19]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[20]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[21]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[22]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[23]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[24]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[25]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[26]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[27]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[28]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[29]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[30]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tdata[31]" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tvalid" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tready" IO_TYPE=LVCMOS33;
+IO_PORT "m_axis_rd_tlast" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[0]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[1]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[2]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[3]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[4]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[5]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[6]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[7]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[8]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[9]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[10]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[11]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[12]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[13]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[14]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[15]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[16]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[17]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[18]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[19]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[20]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[21]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[22]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[23]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[24]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[25]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[26]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[27]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[28]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[29]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[30]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tdata[31]" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tvalid" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tready" IO_TYPE=LVCMOS33;
+IO_PORT "s_axis_wr_tlast" IO_TYPE=LVCMOS33;
+IO_PORT "irq" IO_TYPE=LVCMOS33;

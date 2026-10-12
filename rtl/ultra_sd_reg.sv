@@ -55,17 +55,39 @@ module ultra_sd_reg
   /* verilator lint_off UNUSED */
   logic [31:0] wr_off, rd_off;
   /* verilator lint_on UNUSED */
-  logic [7:0]  wr_reg, rd_reg;
+  logic [3:0]  wr_reg, rd_reg;
   logic        wr_in_window, rd_in_window;
+  logic        wr_mapped, rd_mapped;
 
   assign wr_off = wr_addr - SD_ULTRA_BASE_ADDR;
   assign rd_off = rd_addr - SD_ULTRA_BASE_ADDR;
 
-  assign wr_reg = {wr_off[7:2], 2'b00};
-  assign rd_reg = {rd_off[7:2], 2'b00};
+  // DECODE ON FOUR BITS, NOT EIGHT.
+  //
+  // Table 5-1 occupies 0x00..0x3C with no holes, so the whole map is selected
+  // by off[5:2] -- sixteen words -- and off[7:6] says whether the access is
+  // inside the map at all. Comparing the full byte offset against sixteen
+  // 8-bit constants, which is what this did, builds sixteen 8-input
+  // comparators where sixteen 4-input ones will do.
+  //
+  // That is worth the paragraph because it is the difference between fitting
+  // and not: giving every row of Table 5-1 its own register cost 148 LUT4
+  // over the packed map it replaced and took the core to 2524, over the 2500
+  // budget. Narrowing the decode gives most of it back, and it is a property
+  // of the map rather than a trick -- the map is dense and 64 bytes long, so
+  // two bits of address are known zero by construction.
+  assign wr_reg = wr_off[5:2];
+  assign rd_reg = rd_off[5:2];
 
+  // In the 256-byte window at all (anything else is somebody else's slave)...
   assign wr_in_window = (wr_off[31:8] == '0);
   assign rd_in_window = (rd_off[31:8] == '0);
+
+  // ...and inside the 64 bytes Table 5-1 actually defines. Section 5 reserves
+  // everything above 0x3C for additions, and R-IF-2 says an access there
+  // completes with SLVERR rather than hanging.
+  assign wr_mapped = (wr_off[7:6] == 2'b00);
+  assign rd_mapped = (rd_off[7:6] == 2'b00);
 
   logic [LBA_W-1:0]     lba_q;
   logic [BLOCKS_W-1:0]  blocks_q;
@@ -88,33 +110,43 @@ module ultra_sd_reg
 
   always_comb begin
     case (rd_reg)
-      REG_STAT_DATA: stat_mux = STAT_DATA;
-      REG_STAT_GAP:  stat_mux = STAT_GAP;
-      REG_STAT_BUSY: stat_mux = STAT_BUSY;
-      default:       stat_mux = STAT_RETRY;
+      REG_STAT_DATA[5:2]: stat_mux = STAT_DATA;
+      REG_STAT_GAP[5:2]:  stat_mux = STAT_GAP;
+      REG_STAT_BUSY[5:2]: stat_mux = STAT_BUSY;
+      default:            stat_mux = STAT_RETRY;
     endcase
   end
 
+  // One row of Table 5-1 per case arm. CTRL reads back what was last written
+  // to it even though it is W1S and self-clearing, because a write-only
+  // register that answers an unmapped-looking read is harder to drive from
+  // software than one that answers zero.
   always_comb begin
     rd_data = 32'h0;
     rd_hit  = 1'b1;
     unique case (rd_reg)
-      REG_VERSION:     rd_data = {VERSION_MAGIC, VERSION_MAJOR, VERSION_MINOR};
-      REG_CTRL_STATUS: rd_data = {irq, 4'h0, irq_en_q, 5'h0, irq_stat_q, ERR, STATUS};
-      REG_LBA:         rd_data = lba_q;
-      REG_XFER_CFG:    rd_data = {xfer_q, 7'h0, blocks_q};
-      REG_HW_CFG:      rd_data = {18'h0, cfg_phy_q, cfg_clk_q};
-      REG_CARD_BLK:    rd_data = CARD_BLK;
-      REG_STAT_DATA,
-      REG_STAT_GAP,
-      REG_STAT_BUSY,
-      REG_STAT_RETRY:  rd_data = stat_mux;
-      default:         rd_hit  = 1'b0;
+      REG_VERSION[5:2]:    rd_data = {VERSION_MAGIC, VERSION_MAJOR, VERSION_MINOR};
+      REG_CTRL[5:2]:       rd_data = {28'h0, CTRL};
+      REG_STATUS[5:2]:     rd_data = {24'h0, STATUS};
+      REG_ERR[5:2]:        rd_data = {24'h0, ERR};
+      REG_LBA[5:2]:        rd_data = lba_q;
+      REG_BLOCKS[5:2]:     rd_data = {8'h0, blocks_q};
+      REG_XFER[5:2]:       rd_data = {31'h0, xfer_q};
+      REG_CFG_CLK[5:2]:    rd_data = {24'h0, cfg_clk_q};
+      REG_CFG_PHY[5:2]:    rd_data = {26'h0, cfg_phy_q};
+      REG_CARD_BLK[5:2]:   rd_data = CARD_BLK;
+      REG_STAT_DATA[5:2],
+      REG_STAT_GAP[5:2],
+      REG_STAT_BUSY[5:2],
+      REG_STAT_RETRY[5:2]: rd_data = stat_mux;
+      REG_IRQ_EN[5:2]:     rd_data = {29'h0, irq_en_q};
+      REG_IRQ_STAT[5:2]:   rd_data = {29'h0, irq_stat_q};
+      default:             rd_hit  = 1'b0;
     endcase
   end
 
-  assign rresp_r = (rd_en && !(rd_hit && rd_in_window)) ? RESP_SLVERR
-                                                        : RESP_OKAY;
+  assign rresp_r = (rd_en && !(rd_hit && rd_mapped && rd_in_window)) ? RESP_SLVERR
+                                                                    : RESP_OKAY;
 
   always_ff @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
@@ -141,47 +173,59 @@ module ultra_sd_reg
       if (cfg_clk_hw_q != CFG_CLK_HW) cfg_clk_q <= CFG_CLK_HW;
 
       if (wr_en) begin
-        bresp_r <= wr_in_window ? RESP_OKAY : RESP_SLVERR;
+        bresp_r <= (wr_in_window && wr_mapped) ? RESP_OKAY : RESP_SLVERR;
 
         unique case (wr_reg)
-          REG_CTRL_STATUS: begin
-
+          REG_CTRL[5:2]: begin
             if (wr_strb[0]) begin
               CTRL <= wr_data[CTRL_W-1:0];
 
+              // R-IF-3: LBA, BLOCKS and XFER are latched AT THE START WRITE,
+              // so changing them mid-transfer cannot affect the one running.
               if (wr_data[CTRL_START_BIT]) begin
                 LBA    <= lba_q;
                 BLOCKS <= blocks_q;
                 XFER   <= xfer_q;
               end
             end
-
-            if (wr_strb[3]) begin
-              irq_en_q <= wr_data[IRQ_EN_LSB +: IRQ_W];
-            end
           end
 
-          REG_LBA: begin
+          REG_LBA[5:2]: begin
             if (wr_strb[0]) lba_q[7:0]   <= wr_data[7:0];
             if (wr_strb[1]) lba_q[15:8]  <= wr_data[15:8];
             if (wr_strb[2]) lba_q[23:16] <= wr_data[23:16];
             if (wr_strb[3]) lba_q[31:24] <= wr_data[31:24];
           end
 
-          REG_XFER_CFG: begin
+          REG_BLOCKS[5:2]: begin
             if (wr_strb[0]) blocks_q[7:0]   <= wr_data[7:0];
             if (wr_strb[1]) blocks_q[15:8]  <= wr_data[15:8];
             if (wr_strb[2]) blocks_q[23:16] <= wr_data[23:16];
-            if (wr_strb[3]) xfer_q          <= wr_data[XFER_DIR_BIT];
           end
 
-          REG_HW_CFG: begin
-            if (wr_strb[0]) cfg_clk_q <= wr_data[7:0];
-            if (wr_strb[1]) cfg_phy_q <= wr_data[CFG_PHY_LSB +: CFG_PHY_W];
+          REG_XFER[5:2]: begin
+            if (wr_strb[0]) xfer_q <= wr_data[XFER_DIR_BIT];
           end
 
-          REG_VERSION, REG_CARD_BLK, REG_STAT_DATA,
-          REG_STAT_GAP, REG_STAT_BUSY, REG_STAT_RETRY: ;
+          REG_CFG_CLK[5:2]: begin
+            if (wr_strb[0]) cfg_clk_q <= wr_data[CFG_CLK_LSB +: CFG_CLK_W];
+          end
+
+          REG_CFG_PHY[5:2]: begin
+            if (wr_strb[0]) cfg_phy_q <= wr_data[CFG_PHY_LSB +: CFG_PHY_W];
+          end
+
+          REG_IRQ_EN[5:2]: begin
+            if (wr_strb[0]) irq_en_q <= wr_data[IRQ_EN_LSB +: IRQ_W];
+          end
+
+          // IRQ_STAT is W1C and handled below, outside the case, because the
+          // set side (IRQ_SET) has to win over the clear in the same cycle.
+          REG_IRQ_STAT[5:2]: ;
+
+          REG_VERSION[5:2], REG_STATUS[5:2], REG_ERR[5:2], REG_CARD_BLK[5:2],
+          REG_STAT_DATA[5:2], REG_STAT_GAP[5:2], REG_STAT_BUSY[5:2],
+          REG_STAT_RETRY[5:2]: ;
 
           default: bresp_r <= RESP_SLVERR;
         endcase
@@ -189,7 +233,8 @@ module ultra_sd_reg
 
       for (int i = 0; i < IRQ_W; i++) begin
         logic clr_i;
-        clr_i = wr_en && (wr_reg == REG_CTRL_STATUS) && wr_strb[2] && wr_data[IRQ_STAT_LSB + i];
+        clr_i = wr_en && wr_mapped && (wr_reg == REG_IRQ_STAT[5:2]) && wr_strb[0] &&
+                wr_data[IRQ_STAT_LSB + i];
         if (IRQ_SET[i])  irq_stat_q[i] <= 1'b1;
         else if (clr_i)  irq_stat_q[i] <= 1'b0;
       end

@@ -1,0 +1,44 @@
+--- before/ultra_sd_cmd.sv
++++ after/ultra_sd_cmd.sv
+@@ -204,7 +204,9 @@
+   logic r1_has_err;
+   assign r1_has_err = |(resp_sh_q[R1_STATUS_LSB +: 32] & R1_ERR_MASK);
+ 
++  // Separate data paths: command bits never share storage with CRC bits.
+   logic [CMD_CRC7_BITS-1:0]  tx_sh_q;
++  logic [CRC7_W-2:0]        tx_crc_sh_q;
+   logic [TX_CNT_W-1:0]       tx_cnt_q;
+   logic                      tx_active_q;
+   logic                      cmd_out_q;
+@@ -214,6 +216,7 @@
+   always_ff @(negedge cmd_clk or negedge rst_n) begin
+     if (!rst_n) begin
+       tx_sh_q       <= {CMD_CRC7_BITS{1'b1}};
++      tx_crc_sh_q   <= '1;
+       tx_cnt_q      <= '0;
+       tx_active_q   <= 1'b0;
+       tx_done_q     <= 1'b0;
+@@ -230,12 +233,12 @@
+         end else if (tx_cnt_q == TX_CNT_W'(8)) begin
+ 
+           cmd_out_q           <= crc_q[CRC7_W-1];
+-          tx_sh_q[CRC7_W-2:0] <= crc_q[CRC7_W-2:0];
++          tx_crc_sh_q         <= crc_q[CRC7_W-2:0];
+           tx_crc_fold_q       <= 1'b0;
+         end else if (tx_cnt_q > TX_CNT_W'(1)) begin
+ 
+-          cmd_out_q           <= tx_sh_q[CRC7_W-2];
+-          tx_sh_q[CRC7_W-2:0] <= {tx_sh_q[CRC7_W-3:0], 1'b1};
++          cmd_out_q           <= tx_crc_sh_q[CRC7_W-2];
++          tx_crc_sh_q         <= {tx_crc_sh_q[CRC7_W-3:0], 1'b1};
+           tx_crc_fold_q       <= 1'b0;
+         end else begin
+ 
+@@ -270,6 +273,7 @@
+         tx_cnt_q <= tx_cnt_q;
+         tx_crc_fold_q <= tx_crc_fold_q;
+         tx_sh_q <= tx_sh_q;
++        tx_crc_sh_q <= tx_crc_sh_q;
+       end
+     end
+   end

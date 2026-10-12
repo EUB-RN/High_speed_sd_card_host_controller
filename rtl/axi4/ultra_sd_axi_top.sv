@@ -16,6 +16,9 @@ module ultra_sd_axi_top
 
   input  logic              sd_clk,
   input  logic              sd_rst_n,
+  // SENKRON yazilim clear'leri, alan basina. Asenkron reset pinine girmezler.
+  input  logic              sd_soft_clr,
+  input  logic              axi_soft_clr,
 
   input  logic [ADDR_W-1:0] s_axil_awaddr,
   input  logic              s_axil_awvalid,
@@ -182,6 +185,7 @@ module ultra_sd_axi_top
   ) u_axis_tx (
     .axi_clk          (clk),
     .axi_rst_n        (rst_n),
+    .axi_soft_clr     (axi_soft_clr),
     .xfer_start       (rd_start),
     .xfer_beats       (rd_beats),
     .xfer_abort       (CTRL[CTRL_ABORT_BIT]),
@@ -192,6 +196,7 @@ module ultra_sd_axi_top
     .m_axis_rd_tlast  (m_axis_rd_tlast),
     .sd_clk           (sd_clk),
     .sd_rst_n         (sd_rst_n),
+    .sd_soft_clr      (sd_soft_clr),
     .sd_wr_en         (sd_rd_pl_en),
     .sd_wr_data       (sd_rd_pl_data),
     .sd_wr_commit     (sd_rd_pl_commit),
@@ -207,12 +212,14 @@ module ultra_sd_axi_top
   ) u_axis_rx (
     .axi_clk          (clk),
     .axi_rst_n        (rst_n),
+    .axi_soft_clr     (axi_soft_clr),
     .s_axis_wr_tdata  (s_axis_wr_tdata),
     .s_axis_wr_tvalid (s_axis_wr_tvalid),
     .s_axis_wr_tready (s_axis_wr_tready),
     .s_axis_wr_tlast  (s_axis_wr_tlast),
     .sd_clk           (sd_clk),
     .sd_rst_n         (sd_rst_n),
+    .sd_soft_clr      (sd_soft_clr),
     .sd_rd_en         (sd_wr_pl_en),
     .sd_rd_commit     (sd_wr_pl_commit),
     .sd_rd_rewind     (sd_wr_pl_rewind),

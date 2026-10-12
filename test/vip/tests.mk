@@ -32,6 +32,9 @@ sd_card_model_SRCS := $(PKG) \
                       $(RTL_DIR)/crc/ultra_sd_crc7.sv \
                       $(RTL_DIR)/crc/ultra_sd_crc16.sv \
                       $(RTL_DIR)/ultra_sd_cmd.sv \
+                      $(RTL_DIR)/ultra_sd_cmd_tx.sv \
+                      $(RTL_DIR)/ultra_sd_init.sv \
+                      $(RTL_DIR)/ultra_sd_protocol.sv \
                       $(RTL_DIR)/ultra_sd_line.sv \
                       $(TEST_DIR)/common/models/sd_card_model.sv \
                       $(TEST_DIR)/vip/tb_sd_card_model.sv

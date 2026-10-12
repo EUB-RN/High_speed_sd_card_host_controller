@@ -3,115 +3,109 @@
 Written out by hand rather than parsed out of ultra_sd_pkg.sv: a test that
 derives its expectations from the design under test cannot disagree with it.
 
-A note on what this file tracks, because it is not Table 5-1 verbatim. The
-delivered map is compacted: the registers Table 5-1 gives separate offsets to
-are packed into shared words, with the spec's names surviving as field
-positions inside them.
+This is now Table 5-1 verbatim, one register per row:
 
-    0x00  VERSION    RO
-    0x04  CTRL_STATUS   CTRL (W, byte 0, self-clearing pulses)
-                        STATUS  [7:0]   RO
-                        ERR     [15:8]  RO
-                        IRQ_STAT[18:16] W1C
-                        IRQ_EN  [26:24] RW
-                        irq     [31]    RO
-    0x08  LBA        RW 32
-    0x0C  XFER_CFG      BLOCKS  [23:0]  RW
-                        XFER_DIR[31]    RW
-    0x10  HW_CFG        CFG_CLK [7:0]   RW
-                        CFG_PHY [13:8]  RW
-    0x14  CARD_BLK   RO
-    0x18  STAT_DATA  RO
-    0x1C  STAT_GAP   RO
-    0x20  STAT_BUSY  RO
-    0x24  STAT_RETRY RO
+    0x00  VERSION     RO   [31:16] magic 0x5344, [15:8] major, [7:0] minor
+    0x04  CTRL        W1S  [0] START [1] ABORT [2] STAT_CLEAR [3] SOFT_RESET
+    0x08  STATUS      RO   [0] BUSY [1] DONE [2] CARD_PRESENT [3] CARD_READY
+                           [5:4] SPEED_MODE [7:6] BUS_WIDTH
+    0x0C  ERR         RO   [7:0] error code, Table 5-3
+    0x10  LBA         RW   [31:0]
+    0x14  BLOCKS      RW   [23:0]
+    0x18  XFER        RW   [0] DIR, 0 = read, 1 = write
+    0x1C  CFG_CLK     RW   [7:0] divisor
+    0x20  CFG_PHY     RW   [3:0] SAMPLE_PHASE [4] FORCE_1BIT [5] FORCE_DS
+    0x24  CARD_BLK    RO   capacity in 512-byte blocks
+    0x28  STAT_DATA   RO
+    0x2C  STAT_GAP    RO
+    0x30  STAT_BUSY   RO
+    0x34  STAT_RETRY  RO   [15:0] CRC retries, [31:16] command retries
+    0x38  IRQ_EN      RW   [0] DONE [1] ERR [2] CARD_CHANGE
+    0x3C  IRQ_STAT    W1C  [0] DONE [1] ERR [2] CARD_CHANGE
 
-That packing is a deliberate area optimisation and it is a documented
-deviation from R-IF-2 -- see the known limitations in doc/README.md. This file
-follows the implementation because its job is to verify what was built; it is
-not evidence that the deviation is resolved.
+It did not always say that. The delivered map used to be a compacted ten-word
+layout -- CTRL, STATUS, ERR, IRQ_EN and IRQ_STAT packed into one word at 0x04,
+BLOCKS and XFER into 0x0C, CFG_CLK and CFG_PHY into 0x10 -- recorded as a
+deliberate area saving and a documented deviation from R-IF-2. It was not a
+deviation anybody could afford: Section 5 is normative and exact, the client's
+harness drives these offsets, and on that harness a write to CTRL.START would
+have landed on STATUS. The packing also had a functional edge of its own --
+setting a CFG_PHY force bit with an ordinary 32-bit write zeroed the clock
+divisor, because they shared a word.
 """
 
-REG_VERSION     = 0x00  # RO
-REG_CTRL_STATUS = 0x04  # CTRL / STATUS / ERR / IRQ, one word
-REG_LBA         = 0x08  # RW
-REG_XFER_CFG    = 0x0C  # BLOCKS + XFER_DIR
-REG_HW_CFG      = 0x10  # CFG_CLK + CFG_PHY
-REG_CARD_BLK    = 0x14  # RO
-REG_STAT_DATA   = 0x18  # RO
-REG_STAT_GAP    = 0x1C  # RO
-REG_STAT_BUSY   = 0x20  # RO
-REG_STAT_RETRY  = 0x24  # RO
-
-# The spec's names, resolved to the word each one now lives in. Tests read
-# better with these, and they are the same aliases ultra_sd_pkg.sv carries --
-# but a write to one field is a write to the whole word, so two of these
-# sharing an address can never be programmed in two separate accesses.
-REG_CTRL      = REG_CTRL_STATUS
-REG_STATUS    = REG_CTRL_STATUS
-REG_ERR       = REG_CTRL_STATUS
-REG_IRQ_EN    = REG_CTRL_STATUS
-REG_IRQ_STAT  = REG_CTRL_STATUS
-REG_BLOCKS    = REG_XFER_CFG
-REG_XFER      = REG_XFER_CFG
-REG_CFG_CLK   = REG_HW_CFG
-REG_CFG_PHY   = REG_HW_CFG
+REG_VERSION    = 0x00  # RO
+REG_CTRL       = 0x04  # W1S, self-clearing
+REG_STATUS     = 0x08  # RO
+REG_ERR        = 0x0C  # RO
+REG_LBA        = 0x10  # RW
+REG_BLOCKS     = 0x14  # RW, 24 bits
+REG_XFER       = 0x18  # RW, 1 bit
+REG_CFG_CLK    = 0x1C  # RW, 8 bits
+REG_CFG_PHY    = 0x20  # RW, 6 bits
+REG_CARD_BLK   = 0x24  # RO
+REG_STAT_DATA  = 0x28  # RO
+REG_STAT_GAP   = 0x2C  # RO
+REG_STAT_BUSY  = 0x30  # RO
+REG_STAT_RETRY = 0x34  # RO
+REG_IRQ_EN     = 0x38  # RW
+REG_IRQ_STAT   = 0x3C  # W1C
 
 VERSION_MAGIC = 0x5344  # 'SD', the upper half of VERSION
 
-# Field positions inside the shared words.
+# Field positions. Each field is at the bottom of its own register now, except
+# XFER.DIR, which Table 5-1 puts at bit 0 of its own word.
 CTRL_START_BIT      = 0
 CTRL_ABORT_BIT      = 1
 CTRL_STAT_CLEAR_BIT = 2
 CTRL_SOFT_RESET_BIT = 3
 STATUS_LSB          = 0
-ERR_LSB             = 8
-IRQ_STAT_LSB        = 16
-IRQ_EN_LSB          = 24
+STATUS_BUSY_BIT     = 0
+STATUS_DONE_BIT     = 1
+STATUS_CARD_PRES    = 2
+STATUS_CARD_RDY     = 3
+STATUS_SPEED_LSB    = 4
+STATUS_WIDTH_LSB    = 6
+ERR_LSB             = 0
+IRQ_STAT_LSB        = 0
+IRQ_EN_LSB          = 0
 IRQ_W               = 3
-XFER_DIR_BIT        = 31
+XFER_DIR_BIT        = 0
 CFG_CLK_LSB         = 0
-CFG_PHY_LSB         = 8
+CFG_PHY_LSB         = 0
+CFG_PHY_PHASE_LSB   = 0
+CFG_PHY_FORCE_1BIT  = 4
+CFG_PHY_FORCE_DS    = 5
 
 # The highest mapped offset. Anything above this and inside the 256-byte
 # window is unmapped, and R-IF-2 says an access there answers SLVERR.
-LAST_MAPPED = 0x24
+LAST_MAPPED = 0x3C
 
 # Read/write registers a whole-word write can be swept over, and the mask of
 # bits that actually stick, so a read-back check knows what to expect.
 #
-# CTRL_STATUS is deliberately not here. Its only writable-and-readable field is
-# IRQ_EN, but a whole-word write to that offset also lands on the CTRL byte --
-# which pulses START and sets a transfer going. Sweeping it with random data
-# would be issuing random transfers, so it gets its own strobed test instead.
+# CTRL is deliberately not here: writing it pulses START and sets a transfer
+# going, so sweeping it with random data would be issuing random transfers. It
+# gets its own directed test instead. IRQ_STAT is W1C, which is also not a
+# read-back relationship.
 RW_REGS = {
-    REG_LBA:      0xFFFF_FFFF,  # LBA     = 32
-    REG_XFER_CFG: 0x80FF_FFFF,  # BLOCKS  = 24, XFER_DIR at 31
-    REG_HW_CFG:   0x0000_3FFF,  # CFG_CLK = 8, CFG_PHY = 6 at bit 8
+    REG_LBA:     0xFFFF_FFFF,  # 32 bits
+    REG_BLOCKS:  0x00FF_FFFF,  # 24 bits
+    REG_XFER:    0x0000_0001,  # DIR only
+    REG_CFG_CLK: 0x0000_00FF,  # 8-bit divisor
+    REG_CFG_PHY: 0x0000_003F,  # 4-bit phase + two force bits
+    REG_IRQ_EN:  0x0000_0007,  # three sources
 }
 
-# The bits of CTRL_STATUS a write reaches and a read returns.
-CTRL_STATUS_RW_MASK = 0x0700_0000  # IRQ_EN at bit 24
-
 # Read-only registers: a write must not change them, and must not error
-# either -- they are RO, not absent. CTRL_STATUS is excluded: part of it is
-# writable, so it belongs to neither list wholesale.
+# either -- they are RO, not absent.
 RO_REGS = [
-    REG_VERSION, REG_CARD_BLK,
+    REG_VERSION, REG_STATUS, REG_ERR, REG_CARD_BLK,
     REG_STAT_DATA, REG_STAT_GAP, REG_STAT_BUSY, REG_STAT_RETRY,
 ]
 
 # Unmapped offsets inside the window, used for the SLVERR path (R-IF-2). The
-# first two sit in the gap the compaction opened up between LAST_MAPPED and
-# the offsets Table 5-1 once used, which is exactly where a stale driver
-# written against the table would land.
-UNMAPPED = [0x28, 0x2C, 0x38, 0x3C, 0x40, 0x80, 0xFC]
-
-
-def xfer_cfg(blocks, write):
-    """BLOCKS and XFER_DIR as the single word they share.
-
-    They used to be two registers, so programming them took two writes. They
-    are one word now: a second write would clear what the first put there.
-    """
-    return (blocks & 0x00FF_FFFF) | ((1 << XFER_DIR_BIT) if write else 0)
+# map now fills 0x00..0x3C with no holes, so every one of these is above it --
+# which is what Section 5 means by "you may add registers in the unused
+# address space above 0x3C".
+UNMAPPED = [0x40, 0x44, 0x60, 0x80, 0xC0, 0xFC]

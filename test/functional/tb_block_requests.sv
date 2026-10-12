@@ -20,6 +20,8 @@
 // -----------------------------------------------------------------------------
 module tb_block_requests;
   import ultra_sd_pkg::*;
+  // Yazilim clear'i bu testin konusu degil: sabit 0.
+  logic soft_clr = 1'b0;
 
   localparam int WORDS_PER_BLOCK = (BLOCK_BYTES * 8) / 32;   // 128
   localparam int CRC_RETRIES     = 1;
@@ -30,7 +32,7 @@ module tb_block_requests;
   logic clk = 0, rst_n;
 
   // ---- istek ----------------------------------------------------------------
-  logic                go_i, card_present_i, card_ready_i, dir_i, block_addr_i;
+  logic                go_i, card_present_i, card_ready_i, dir_i;
   logic [LBA_W-1:0]    lba_i;
   logic [BLOCKS_W-1:0] blocks_i;
   logic [31:0]         card_blk_i;
@@ -275,7 +277,7 @@ module tb_block_requests;
   initial begin
     checks = 0; failures = 0;
     rst_n = 0;
-    go_i = 0; card_present_i = 0; card_ready_i = 0; dir_i = 0; block_addr_i = 1;
+    go_i = 0; card_present_i = 0; card_ready_i = 0; dir_i = 0;
     lba_i = 0; blocks_i = 1; card_blk_i = 32'd4096; rca_i = 16'hABCD;
     tx_take_i = 0; tx_done_i = 0; tx_status_ok_i = 0; tx_status_tmo_i = 0;
     rx_data_i = 0; rx_valid_i = 0; rx_busy_i = 0; rx_done_i = 0; rx_crc_ok_i = 0;

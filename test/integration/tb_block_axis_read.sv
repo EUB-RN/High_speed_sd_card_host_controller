@@ -2,9 +2,13 @@
 
 module tb_block_axis_read;
   import ultra_sd_pkg::*;
+  // Yazilim clear'i bu testin konusu degil: sabit 0.
+  logic soft_clr     = 1'b0;   // ultra_sd_block'un senkron clear'i
+  logic axi_soft_clr = 1'b0;
+  logic sd_soft_clr = 1'b0;
   localparam int WORDS = 128;
   logic clk=0,axi_clk=0,rst_n,go_i,card_present_i,card_ready_i,dir_i;
-  logic [31:0] lba_i,card_blk_i;logic[23:0]blocks_i;logic block_addr_i;logic[15:0]rca_i;
+  logic [31:0] lba_i,card_blk_i;logic[23:0]blocks_i;logic[15:0]rca_i;
   logic accept_o,busy_o,fin_o,fail_o;err_e fail_code_o,cmd_err_i;
   logic stat_clear_tgl_i=1'b0;logic [31:0] stat_gap_o;logic [15:0] stat_retry_crc_o;
   logic req_valid_o,req_is_acmd_o,req_ready_i,rsp_valid_i,rsp_err_i;logic[5:0]req_index_o;
@@ -59,7 +63,7 @@ module tb_block_axis_read;
   endtask
   initial begin
     checks=0;failures=0;rst_n=0;go_i=0;card_present_i=1;card_ready_i=1;dir_i=0;
-    lba_i=32'h80;blocks_i=1;card_blk_i=32'h10000;block_addr_i=1;rca_i=16'h1234;
+    lba_i=32'h80;blocks_i=1;card_blk_i=32'h10000;rca_i=16'h1234;
     req_ready_i=0;rsp_valid_i=0;rsp_err_i=0;cmd_err_i=ERR_OK;tx_take_i=0;tx_done_i=0;
     tx_status_ok_i=1;tx_status_tmo_i=0;rx_data_i=0;rx_valid_i=0;rx_busy_i=0;rx_done_i=0;
     rx_crc_ok_i=1;dat_active_i=0;card_busy_i=0;wr_data_i=0;wr_last_i=0;wr_block_ready_i=0;

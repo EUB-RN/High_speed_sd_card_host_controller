@@ -1,0 +1,244 @@
+# bench harness bitstream post-P&R timing (bench/build.tcl, SUITE 0)
+
+Timing Messages
+Report Title
+Timing Analysis Report
+Design File
+/home/hpw/High_speed_sd_card_host_controller/bench/impl/gwsynthesis/project.vg
+Physical Constraints File
+/home/hpw/High_speed_sd_card_host_controller/bench/impl/bench_merged.cst
+Timing Constraint File
+/home/hpw/High_speed_sd_card_host_controller/bench/constr/bench.sdc
+Tool Version
+V1.9.11.03 Education
+Part Number
+GW2A-LV18PG256C8/I7
+Device
+GW2A-18
+Device Version
+C
+Created Time
+Mon Oct 12 14:30:29 2026
+Legal Announcement
+Copyright (C)2014-2025 Gowin Semiconductor Corporation. All rights reserved.
+
+STA Tool Run Summary:
+Setup Delay Model
+Slow 0.95V 85C C8/I7
+Hold Delay Model
+Fast 1.05V 0C C8/I7
+Numbers of Paths Analyzed
+34731
+Numbers of Endpoints Analyzed
+12923
+Numbers of Falling Endpoints
+279
+Numbers of Setup Violated Endpoints
+0
+Numbers of Hold Violated Endpoints
+0
+Clock Summary:
+NO.
+Clock Name
+Type
+Period
+Frequency(MHz)
+Rise
+Fall
+Source
+Master
+Objects
+1
+clk27
+Base
+37.037
+27.000
+0.000
+18.518
+clk27
+2
+sys_clk
+Generated
+10.101
+99.000
+0.000
+5.050
+clk27
+clk27
+u_pll/CLKOUT
+3
+sd_clk_core
+Generated
+20.202
+49.500
+0.000
+10.101
+u_pll/CLKOUT
+sys_clk
+u_sd/u_phy/u_dqce_sd/CLKOUT
+4
+u_pll/CLKOUTP.default_gen_clk
+Generated
+10.101
+99.000
+0.000
+5.050
+clk27_ibuf/I
+clk27
+u_pll/CLKOUTP
+5
+u_pll/CLKOUTD.default_gen_clk
+Generated
+20.202
+49.500
+0.000
+10.101
+clk27_ibuf/I
+clk27
+u_pll/CLKOUTD
+6
+u_pll/CLKOUTD3.default_gen_clk
+Generated
+30.303
+33.000
+0.000
+15.151
+clk27_ibuf/I
+clk27
+u_pll/CLKOUTD3
+Max Frequency Summary:
+NO.
+Clock Name
+Constraint
+Actual Fmax
+Logic Level
+Entity
+1
+sys_clk
+99.000(MHz)
+99.359(MHz)
+7
+TOP
+2
+sd_clk_core
+49.500(MHz)
+50.869(MHz)
+2
+TOP
+No timing paths to get frequency of clk27!
+No timing paths to get frequency of u_pll/CLKOUTP.default_gen_clk!
+No timing paths to get frequency of u_pll/CLKOUTD.default_gen_clk!
+No timing paths to get frequency of u_pll/CLKOUTD3.default_gen_clk!
+Total Negative Slack Summary:
+Clock Name
+Analysis Type
+Endpoints TNS
+Number of Endpoints
+clk27
+Setup
+0.000
+0
+clk27
+Hold
+0.000
+0
+sys_clk
+Setup
+0.000
+0
+sys_clk
+Hold
+0.000
+0
+sd_clk_core
+Setup
+0.000
+0
+sd_clk_core
+Hold
+0.000
+0
+u_pll/CLKOUTP.default_gen_clk
+Setup
+0.000
+0
+u_pll/CLKOUTP.default_gen_clk
+Hold
+0.000
+0
+u_pll/CLKOUTD.default_gen_clk
+Setup
+0.000
+0
+u_pll/CLKOUTD.default_gen_clk
+Hold
+0.000
+0
+u_pll/CLKOUTD3.default_gen_clk
+Setup
+0.000
+0
+u_pll/CLKOUTD3.default_gen_clk
+Hold
+0.000
+0
+
+Setup Paths Table
+Report Command:report_timing -setup -max_paths 25 -max_common_paths 1
+  slack     from -> to   [clocks]  relation/skew/delay
+     0.037  u_bench/u_rep/idx_q_7_s1/Q  ->  u_bench/u_rep/rem_q_13_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 10.029
+     0.070  u_bench/eg_case_q_1_s0/Q  ->  u_bench/mism_q_14_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.996
+     0.089  u_bench/u_rep/idx_q_1_s1/Q  ->  u_bench/u_rep/rem_q_18_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.977
+     0.110  u_bench/u_rep/idx_q_1_s1/Q  ->  u_bench/u_rep/rem_q_26_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.956
+     0.119  u_bench/x_dir_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_bin_1_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.947
+     0.128  u_bench/sst_q_5_s1/Q  ->  u_bench/sst_q_0_s1/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.938
+     0.149  u_bench/u_rep/idx_q_2_s1/Q  ->  u_bench/u_rep/rem_q_12_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.917
+     0.168  u_bench/x_dir_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_bin_0_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.898
+     0.192  u_bench/u_rep/idx_q_2_s1/Q  ->  u_bench/u_rep/rem_q_9_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.874
+     0.204  u_bench/eg_case_q_1_s0/Q  ->  u_bench/mism_q_1_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.862
+     0.217  u_bench/u_rep/idx_q_7_s1/Q  ->  u_bench/u_rep/rem_q_0_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.849
+     0.233  u_bench/x_dir_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_0_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.833
+     0.236  u_bench/sst_q_2_s1/Q  ->  u_bench/x_blocks_1_s1/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.830
+     0.236  u_bench/sst_q_2_s1/Q  ->  u_bench/x_blocks_2_s1/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.830
+     0.236  u_bench/sst_q_2_s1/Q  ->  u_bench/x_lba_7_s1/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.830
+     0.236  u_bench/sst_q_2_s1/Q  ->  u_bench/x_lba_17_s1/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.830
+     0.254  u_bench/eg_case_q_1_s0/Q  ->  u_bench/mism_q_15_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.812
+     0.254  u_bench/eg_case_q_1_s0/Q  ->  u_bench/mism_q_24_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.812
+     0.254  u_bench/eg_case_q_1_s0/Q  ->  u_bench/mism_q_25_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.812
+     0.254  u_bench/eg_case_q_1_s0/Q  ->  u_bench/mism_q_28_s0/CE   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.812
+     0.259  u_bench/x_dir_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_5_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.807
+     0.259  u_bench/x_dir_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_bin_5_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.807
+     0.272  u_bench/sst_q_1_s1/Q  ->  u_bench/sst_q_0_s1/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.794
+     0.283  u_bench/u_rep/idx_q_1_s1/Q  ->  u_bench/u_rep/rem_q_8_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 10.101  skew 0.000  delay 9.783
+     0.272  u_sd/u_cmd/u_engine/u_tx/cmd_out_o_s0/Q  ->  u_sd/u_phy/u_iobuf_cmd/IO   [sd_clk_core:[F] -> sd_clk_core:[R]]  rel 10.101  skew 2.270  delay 5.959
+
+Hold Paths Table
+Report Command:report_timing -hold -max_paths 25 -max_common_paths 1
+  slack     from -> to   [clocks]  relation/skew/delay
+     0.211  u_sd/u_axi/u_axis_rx/u_fifo/rptr_bin_0_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/mem_mem_0_0_s/ADB[5]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.329
+     0.279  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_7_s0/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s10/DI[3]   [sys_clk:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.001  delay 0.323
+     0.279  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_4_s0/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s10/DI[0]   [sys_clk:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.001  delay 0.323
+     0.303  u_bench/sd_q_s0/D  ->  u_bench/sd_q_s0/D   [sd_clk_core:[F] -> sys_clk:[R]]  rel 0.000  skew -1.511  delay 1.861
+     0.324  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s2/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s5/CE   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.335
+     0.336  u_sd/u_axi/u_axis_rx/u_fifo/rptr_bin_7_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/mem_mem_0_0_s/ADB[12]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.454
+     0.346  u_sd/u_axi/u_axis_tx/u_fifo/wptr_bin_1_s0/Q  ->  u_sd/u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/ADA[6]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.464
+     0.347  u_sd/u_axi/u_axis_rx/u_fifo/rptr_bin_5_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/mem_mem_0_0_s/ADB[10]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.465
+     0.347  u_sd/u_axi/u_axis_tx/u_fifo/wptr_bin_3_s0/Q  ->  u_sd/u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/ADA[8]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.465
+     0.348  u_sd/u_axi/u_axis_rx/u_fifo/rptr_bin_1_s1/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/mem_mem_0_0_s/ADB[6]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.466
+     0.349  u_sd/u_axi/u_axis_tx/u_fifo/rptr_bin_5_s1/Q  ->  u_sd/u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/ADB[10]   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.467
+     0.363  u_sd/u_line/rx_data_q_24_s0/Q  ->  u_sd/u_axi/u_axis_tx/u_fifo/mem_mem_0_0_s/DI[24]   [sd_clk_core:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.000  delay 0.612
+     0.407  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_6_s0/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s10/DI[2]   [sys_clk:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.001  delay 0.451
+     0.407  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_5_s0/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s10/DI[1]   [sys_clk:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.001  delay 0.451
+     0.419  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_3_s0/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s8/DI[3]   [sys_clk:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.001  delay 0.462
+     0.419  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_0_s0/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s8/DI[0]   [sys_clk:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.001  delay 0.462
+     0.424  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_8_s0/Q  ->  u_sd/u_axi/u_axis_rx/u_fifo/wptr_gray_s1_0_s12/DI[0]   [sys_clk:[R] -> sd_clk_core:[R]]  rel 0.000  skew 0.001  delay 0.468
+     0.424  u_bench/blink_q_2_s0/Q  ->  u_bench/blink_q_2_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.435
+     0.424  u_bench/blink_q_6_s0/Q  ->  u_bench/blink_q_6_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.435
+     0.424  u_bench/blink_q_8_s0/Q  ->  u_bench/blink_q_8_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.435
+     0.424  u_bench/blink_q_12_s0/Q  ->  u_bench/blink_q_12_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.435
+     0.424  u_bench/blink_q_14_s0/Q  ->  u_bench/blink_q_14_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.435
+     0.424  u_bench/blink_q_18_s0/Q  ->  u_bench/blink_q_18_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.435
+     0.424  u_bench/blink_q_20_s0/Q  ->  u_bench/blink_q_20_s0/D   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.435
+     0.425  u_bench/u_rep/u_tx/div_q_3_s1/Q  ->  u_bench/u_rep/u_tx/div_q_3_s1/D   [sys_clk:[R] -> sys_clk:[R]]  rel 0.000  skew 0.000  delay 0.436
+
+Full per-path dumps: bench/impl/pnr/project_tr_content.html

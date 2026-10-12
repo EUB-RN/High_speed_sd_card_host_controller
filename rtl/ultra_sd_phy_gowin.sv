@@ -5,6 +5,8 @@ module ultra_sd_phy_gowin
 (
   input  logic                   clk,
   input  logic                   rst_n,
+  input  logic                   soft_clr,   // SENKRON yazilim clear'i;
+                                             // asenkron reset pinine girmez
 
   /* verilator lint_off UNUSED */
   input  logic [CFG_PHY_W-1:0]   cfg_phy_i,
@@ -87,7 +89,6 @@ module ultra_sd_phy_gowin
       phase_cnt_q <= '0;
       samp_pend_q <= 1'b0;
     end else begin
-
       pad_en_q <= 1'b1;
 
       phase_q  <= cfg_phy_i[CFG_PHY_PHASE_LSB +: CFG_PHY_PHASE_W];
@@ -110,6 +111,23 @@ module ultra_sd_phy_gowin
       if (samp_en) begin
         cmd_in_q <= cmd_pad_in;
         dat_in_q <= dat_pad_in;
+      end
+
+      if (soft_clr) begin
+        // pad_en_q BILEREK yok: amaci "pedler henuz acilmadi" demek ve reset
+        // sonrasi bir daha asla degismemek. constr/ultra_sd.sdc ona tam bu
+        // gerekceyle set_false_path -from pad_en_q/Q koyuyor; soft reset onu
+        // oynatirsa o kisit yalan olur ve ped cikis enable'i analiz disi kalir.
+        // Soft reset pedleri yeniden tri-state'e almak zorunda da degil.
+        cmd_in_q    <= 1'b1;
+        dat_in_q    <= {SD_DATA_LANES{1'b1}};
+        phase_q     <= '0;
+        sd_clk_q    <= 1'b0;
+        phase_cnt_q <= '0;
+        samp_pend_q <= 1'b0;
+
+        // Preserve registers not reset by software clear.
+        pad_en_q <= pad_en_q;
       end
     end
   end

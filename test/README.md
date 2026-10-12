@@ -75,6 +75,25 @@ test/
   performance/          throughput and the characterisation sweep
 ```
 
+Every testbench in the regression, by category:
+
+| category | testbenches |
+|---|---|
+| `unit` | `clk_controller`, `phy_clk_gate`, `crc7`, `crc16`, `ultra_sd_reg`, `async_fifo`, `ultra_sd_cmd`, `system_controller` |
+| `functional` | `ultra_sd_line`, `init_ladder_basic`, `init_ladder_full`, `block_requests`, `block_flow` |
+| `integration` | `init_cmd_stack`, `block_stat`, `block_axis_read`, `block_axis_write`, `line_card`, `top_integration`, `bench_flow`, `bench_timing`, `bench_soak`, `bench_deg` (drafts, not in the default run: `bench_edge`, `bench_ctrl`) |
+| `vip` | `sd_card_model`, plus the cocotb AXI4-Lite and AXI4-Stream suites |
+| `error_injection` | `error_inject`, plus `mutation.sh` |
+| `formal` | `axi4_lite_slave` (`bmc` + `prove`); `async_fifo` is written but does not close -- `make formal-fifo`, and see `formal/README.md` |
+| `coverage` | `coverage` |
+| `stress` | `random_traffic`, and `soak_long` for nightly |
+| `performance` | `throughput_read`, `throughput_write`, `counter_crosscheck`, `freq_sweep` |
+
+The four `bench_*` tests in `integration` run the benchmark harness from
+`bench/` against the behavioural card. That is what makes a hardware run not
+the first execution of a sequence -- each of the three bitstreams in `bench/`
+has a simulation twin here.
+
 ## The categories
 
 Why these and not one flat pile: each answers a different question, fails for
@@ -145,20 +164,38 @@ regression at the multi-block preconditioning write: the second/next block is
 cut short and the core reports `ERR_DAT_TIMEOUT`.  This is a real top-level DAT
 write sequencing defect, not an expected timeout or a disabled assertion.
 
-## Still required by R-DEL-6
+## R-DEL-6 and R-DEL-7
 
-- top-level single-block and multi-block read/write through AXI and SD pads
-- CRC error injection and recovery -- `error_injection/`
-- AXI4-Lite register access, including the SLVERR path -- `vip/`
+R-DEL-6's required scenarios are covered:
+
+| scenario | where |
+|---|---|
+| top-level single-block and multi-block read/write through AXI and the SD pads | `integration/tb_top_integration.sv`, `performance/tb_throughput_read.sv`, `performance/tb_throughput_write.sv` |
+| CRC error injection and recovery | `error_injection/tb_error_inject.sv`, 141 checks over four hostile-card scenarios |
+| AXI4-Lite register access including the SLVERR path | `vip/` (cocotb, 12/12) and `formal/axi4_lite_slave.sby`, which closes by k-induction |
 
 R-DEL-7: the testbench must demonstrably **fail** when the design is broken.
-The client injects the faults listed in Appendix E.4 into the RTL and re-runs
-it; it must catch them. A behavioural card model that catches injected faults
-is worth more, for the optionals pool, than everything else on that list
-combined -- which is why the model lives in `common/models/` and not inside
-one testbench.
+`error_injection/mutation.sh` automates that. Each fault is applied to a copy
+of `rtl/`, the named tests run against the copy, and a fault that no test fails
+on is reported as a hole in the suite:
 
-Mutation-test each new testbench as it is written: change one thing in the RTL,
-confirm the testbench fails, put it back. `error_injection/` is where that gets
-automated against the Appendix E.4 list. Every wait must be bounded, so that a
-broken design produces a failure rather than a hang.
+```bash
+test/error_injection/mutation.sh          # all faults
+test/error_injection/mutation.sh crc16_poly
+KEEP=1 test/error_injection/mutation.sh   # keep the mutated trees and logs
+```
+
+Current result: **9 faults injected, 9 caught, 0 missed** -- one each on the
+CRC polynomials, the retry budget, the FIFO commit, the FIFO rewind, the
+published write pointer, the write status token, the card-detect polarity and
+the CTRL register decode.
+
+One of those faults had to be rewritten, and the script records why, because it
+is the trap this kind of harness falls into: the first version of the commit
+fault was an *equivalent* mutant -- the two expressions it swapped are equal on
+every cycle the fault could fire -- so nothing caught it and nothing should
+have. An equivalent mutant is not a missed fault, and the only way to tell them
+apart is to read why the test passed rather than trusting the count.
+
+Every wait is bounded, so a broken design produces a failure rather than a
+hang. That is what makes the mutation runs terminate at all.

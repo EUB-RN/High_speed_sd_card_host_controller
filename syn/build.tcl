@@ -31,6 +31,9 @@ add_file ../rtl/ultra_sd_block.sv
 
 # ---- L2: komut motoru + baslatma merdiveni (tek modul, arbiter yok) --------
 add_file ../rtl/ultra_sd_cmd.sv
+add_file ../rtl/ultra_sd_cmd_tx.sv
+add_file ../rtl/ultra_sd_init.sv
+add_file ../rtl/ultra_sd_protocol.sv
 
 # ---- L1: DAT cerceveleme ve CRC --------------------------------------------
 add_file ../rtl/crc/ultra_sd_crc7.sv
@@ -39,6 +42,7 @@ add_file ../rtl/ultra_sd_line.sv
 
 # ---- L0 ve sistem -----------------------------------------------------------
 add_file ../rtl/clk_controller.sv
+add_file ../rtl/rst_sync.sv
 add_file ../rtl/system_controller.sv
 add_file ../rtl/ultra_sd_phy_gowin.sv
 add_file ../rtl/ultra_sd_top.sv

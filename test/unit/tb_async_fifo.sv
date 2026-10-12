@@ -6,6 +6,7 @@ module tb_async_fifo;
 
   logic wr_clk = 0, rd_clk = 0;
   logic wr_rst_n, rd_rst_n, wr_en, rd_en;
+  logic wr_soft_clr, rd_soft_clr;
   logic wr_commit, wr_rewind, rd_commit, rd_rewind;
   logic [DATA_W-1:0] wr_data, rd_data;
   logic wr_full, rd_valid;
@@ -52,6 +53,7 @@ module tb_async_fifo;
     // Spekulasyon kapali: her yazilan kelime yayinlanir, her okunan serbest
     // kalir -- yani duz FIFO davranisi.
     wr_commit = 1; wr_rewind = 0; rd_commit = 1; rd_rewind = 0;
+    wr_soft_clr = 0; rd_soft_clr = 0;
     repeat (3) @(posedge wr_clk); wr_rst_n = 1;
     repeat (3) @(posedge rd_clk); rd_rst_n = 1;
     repeat (2) @(posedge rd_clk); #1;
@@ -124,6 +126,42 @@ module tb_async_fifo;
     pop_check(8'hc0); pop_check(8'hc1); pop_check(8'hc2);
     repeat (4) @(posedge rd_clk); #1;
     check(!rd_valid && wr_level == 0, "rewind replayed the whole block");
+
+    // -------------------------------------------------------------------------
+    // SENKRON yazilim clear'i (soft reset). Iki yaka da AYNI istekten
+    // sifirlanir; biri atlanirsa wr_level = wptr - rptr farki sarar ve FIFO
+    // "yer var" derken veriyi uzerine yazar. Tasarimda tam bu hata vardi:
+    // soft reset FIFO'nun yalnizca SD yakasina ulasiyordu (SD yakasi
+    // core_rst_n, AXI yakasi sys_rst_n ile kuruluyordu).
+    //
+    // Hatanin ortaya cikmasi icin rptr'nin SIFIR OLMAMASI gerekiyor, o yuzden
+    // once birkac kelime tuketilir.
+    // -------------------------------------------------------------------------
+    push(8'hd0); push(8'hd1); push(8'hd2); push(8'hd3);
+    pop_check(8'hd0); pop_check(8'hd1);
+    check(wr_level != 0, "clear oncesi FIFO gercekten dolu");
+
+    // Istek iki yaka da gordugunu onaylayana kadar ayakta tutulur; burada o
+    // pencere iki yakanin da birkac cevrimini kapsayacak kadar uzun.
+    @(negedge wr_clk); wr_soft_clr = 1;
+    @(negedge rd_clk); rd_soft_clr = 1;
+    repeat (3) @(posedge wr_clk);
+    repeat (3) @(posedge rd_clk);
+    @(negedge wr_clk); wr_soft_clr = 0;
+    @(negedge rd_clk); rd_soft_clr = 0;
+    repeat (4) @(posedge rd_clk); #1;
+
+    check(wr_level == 0, "clear sonrasi wr_level sifir (sarma yok)");
+    check(rd_level == 0, "clear sonrasi rd_level sifir");
+    check(!rd_valid,     "clear sonrasi okunacak veri yok");
+    check(!wr_full,      "clear sonrasi FIFO dolu gorunmuyor");
+
+    // Clear'dan sonra FIFO gercekten calisiyor olmali: sifirlanmis ama
+    // kullanilamaz bir FIFO da gecerli bir hata.
+    push(8'he0); push(8'he1);
+    pop_check(8'he0); pop_check(8'he1);
+    repeat (4) @(posedge rd_clk); #1;
+    check(!rd_valid && wr_level == 0, "clear sonrasi FIFO normal calisiyor");
 
     if (failures) begin
       $display("tb_async_fifo: FAILED (%0d/%0d)", failures, checks);

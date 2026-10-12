@@ -2,11 +2,12 @@
 
 module tb_block_flow;
   import ultra_sd_pkg::*;
+  // Yazilim clear'i bu testin konusu degil: sabit 0.
+  logic soft_clr = 1'b0;
 
   logic clk = 0, rst_n, go_i, card_present_i, card_ready_i, dir_i;
   logic [31:0] lba_i, card_blk_i;
   logic [23:0] blocks_i;
-  logic block_addr_i;
   logic [15:0] rca_i;
   logic accept_o, busy_o, fin_o, fail_o;
   // Gap ve CRC-retry artik ham sinyal olarak disari cikmiyor: ikisi de
@@ -151,7 +152,7 @@ module tb_block_flow;
   initial begin
     checks = 0; failures = 0;
     card_present_i = 1; card_ready_i = 1; card_blk_i = 32'h100000;
-    block_addr_i = 1; rca_i = 16'h1234; lba_i = 0; blocks_i = 1; dir_i = 0;
+    rca_i = 16'h1234; lba_i = 0; blocks_i = 1; dir_i = 0;
     rsp_err_i = 0; cmd_err_i = ERR_OK; rx_data_i = 0; rx_busy_i = 0;
     rx_crc_ok_i = 1; dat_active_i = 0; card_busy_i = 0;
     rd_room_ok_i = 1; wr_data_i = 0; wr_last_i = 0; wr_block_ready_i = 1;

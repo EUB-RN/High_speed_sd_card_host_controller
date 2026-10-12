@@ -67,9 +67,23 @@ module system_controller
   // ve yanlisti: host 1-bit'e dusuyor, kart 4-bit'te kaliyordu.
   input  logic                            bus_4bit_i,
 
-  // Reset cikislari
+  // ---- Reset cikislari ------------------------------------------------------
+  // HARD ve SOFT reset BIRBIRINE HIC KARISMAZ. Hard reset floplarin asenkron
+  // pinine gider ve alan basina sync-deassert edilir; soft reset her alanda
+  // SENKRON bir clear kolu olur. Eskiden ikisi
+  //     core_rst_n_o = rst_n_o & soft_rst_n_q
+  // ile AND'lenip TEK bir asenkron reset neti olarak dagitiliyordu -- neden
+  // birakildigi rst_sync.sv'nin basliginda.
+  //
+  // alan: clk
   output logic                            rst_n_o,
-  output logic                            core_rst_n_o,
+  output logic                            soft_clr_o,
+  // alan: sd_clk_i (gate'lenmis SD saati)
+  output logic                            sd_rst_n_o,
+  output logic                            sd_soft_clr_o,
+  // O alanlarin onaylari, cagiran tarafindan clk'e senkronlanmis ve AND'lenmis
+  // olarak geri gelir. Istek ancak hepsi onayladiktan sonra birakilir.
+  input  logic                            soft_ack_ext_i,
 
   // Kart durumu
   output logic                            card_present_o,
@@ -129,44 +143,68 @@ module system_controller
   localparam int DRAIN_CNT_W  = $clog2(DRAIN_SD_CLK + 1);
 
   // ---------------------------------------------------------------------------
-  // 1. Reset senkronizasyonu (Asenkron assert, senkron release)
+  // 1. Reset kaynaklari: alan basina bir rst_sync
+  //
+  // Her alan kendi hard reset'ini (async assert / o alanda sync deassert) ve
+  // kendi SENKRON soft clear'ini alir. Bu modulun sahip oldugu iki alan var:
+  // clk, ve gate'lenmis SD saati sd_clk_i. axis_clk alani ust modulde kendi
+  // ornegini kurar ve onayini soft_ack_ext_i ile geri verir.
   // ---------------------------------------------------------------------------
-  logic [RST_SYNC_STAGES-1:0] rst_sync_q;
-
-  always_ff @(posedge clk or negedge rst_n_i) begin
-    if (!rst_n_i) begin
-      rst_sync_q <= '0;
-    end else begin
-      rst_sync_q <= {rst_sync_q[RST_SYNC_STAGES-2:0], 1'b1};
-    end
-  end
-
-  assign rst_n_o = rst_sync_q[RST_SYNC_STAGES-1];
-
-  // ---------------------------------------------------------------------------
-  // 2. Soft Reset sayaci (Carry-chain dogal yukari sayac)
-  // ---------------------------------------------------------------------------
-  logic                  soft_rst_n_q;
+  logic                  soft_req_q;
   logic [SOFT_CNT_W-1:0] soft_cnt_q;
+  logic                  soft_min_done;
+
+  rst_sync #(
+    .STAGES (RST_SYNC_STAGES)
+  ) u_rst_clk (
+    .clk          (clk),
+    .hard_rst_n_i (rst_n_i),
+    .soft_req_i   (soft_req_q),
+    .rst_n_o      (rst_n_o),
+    .soft_clr_o   (soft_clr_o)
+  );
+
+  rst_sync #(
+    .STAGES (RST_SYNC_STAGES)
+  ) u_rst_sd (
+    .clk          (sd_clk_i),
+    .hard_rst_n_i (rst_n_i),
+    .soft_req_i   (soft_req_q),
+    .rst_n_o      (sd_rst_n_o),
+    .soft_clr_o   (sd_soft_clr_o)
+  );
+
+  // ---------------------------------------------------------------------------
+  // 2. Soft reset ISTEGI
+  //
+  // CTRL.SOFT_RESET tek clk cevrimi genisliginde (register dosyasi CTRL'u her
+  // cevrim kendisi temizliyor), o yuzden burada bir SEVIYEYE cevrilir.
+  //
+  // Birakma IKI kosula bagli:
+  //   - sayac: en az SOFT_RST_CYC clk cevrimi gecmis olmali. Bu, istegin
+  //     gorulmesi icin degil, cekirdegin gercekten temizlenmesi icin bir TABAN.
+  //   - onay: TUM alanlar clear'i gordugunu bildirmis olmali. Sayac tek basina
+  //     yetmez, cunku axis_clk disardan geliyor ve oranini kimse bilmiyor --
+  //     hicbir sabit sayi kanitlanabilir degil.
+  // ---------------------------------------------------------------------------
+  assign soft_min_done = (soft_cnt_q == SOFT_CNT_W'(SOFT_RST_CYC));
 
   always_ff @(posedge clk or negedge rst_n_o) begin
     if (!rst_n_o) begin
-      soft_rst_n_q <= 1'b1;
-      soft_cnt_q   <= '0;
+      soft_req_q <= 1'b0;
+      soft_cnt_q <= '0;
     end else if (soft_reset_i) begin
-      soft_rst_n_q <= 1'b0;
-      soft_cnt_q   <= '0;
-    end else if (!soft_rst_n_q) begin
-      if (soft_cnt_q == SOFT_CNT_W'(SOFT_RST_CYC)) begin
-        soft_rst_n_q <= 1'b1;
-        soft_cnt_q   <= '0;
-      end else begin
-        soft_cnt_q   <= soft_cnt_q + SOFT_CNT_W'(1);
+      soft_req_q <= 1'b1;
+      soft_cnt_q <= '0;
+    end else if (soft_req_q) begin
+      if (!soft_min_done) begin
+        soft_cnt_q <= soft_cnt_q + SOFT_CNT_W'(1);
+      end else if (soft_clr_o && sd_soft_clr_o && soft_ack_ext_i) begin
+        soft_req_q <= 1'b0;
       end
     end
   end
 
-  assign core_rst_n_o = rst_n_o & soft_rst_n_q;
 
   // ---------------------------------------------------------------------------
   // 3. Kart Algilama ve Mekanik Debounce (Yukari sayac)
@@ -180,6 +218,10 @@ module system_controller
   // CARD_READY'nin yukselen kenari, card_change_q ile AYNI flopa dusuyor:
   // ikisi de "git STATUS'u oku" demek, ikisi de tek cevrimlik darbe olmali.
   logic              rdy_d_q;
+  // Registered Table 5-1 views of two quasi-static sd_clk_core signals; see
+  // the status_o assignments for why they are not read combinationally.
+  logic              card_ready_q;
+  speed_e            speed_q;
 
   assign cd_raw = cd_sync_q[1];
 
@@ -191,9 +233,13 @@ module system_controller
       card_present_q <= 1'b0;
       card_change_q  <= 1'b0;
       rdy_d_q        <= 1'b0;
+      card_ready_q   <= 1'b0;
+      speed_q        <= SPEED_INIT;
     end else begin
       cd_sync_q     <= {cd_sync_q[0], sd_cd_i};
       rdy_d_q       <= card_ready_i;
+      card_ready_q  <= card_ready_i;
+      speed_q       <= speed_i;
 
       // Varsayilan sifir; asagidaki IKI olaydan biri onu bu cevrim icin kurar.
       card_change_q <= card_ready_i & ~rdy_d_q;
@@ -263,19 +309,27 @@ module system_controller
   assign line_phase = (phase_q == SYS_READ) || (phase_q == SYS_WRITE);
 
   // Rampa sayaci: SD saatinin gercek posedge'inde dogal yukari sayar (0 -> RAMP_CLOCKS)
-  always_ff @(posedge sd_clk_i or negedge core_rst_n_o) begin
-    if (!core_rst_n_o) begin
+  always_ff @(posedge sd_clk_i or negedge sd_rst_n_o) begin
+    if (!sd_rst_n_o) begin
       ramp_cnt_q  <= '0;
       ramp_done_q <= 1'b0;
-    end else if (phase_q != SYS_RAMP) begin
-      ramp_cnt_q  <= '0;
-      ramp_done_q <= 1'b0;
-    end else if (!ramp_done_q) begin
-      if (ramp_cnt_q == RAMP_CNT_W'(RAMP_CLOCKS - 1)) begin
-        ramp_cnt_q  <= ramp_cnt_q + RAMP_CNT_W'(1);
-        ramp_done_q <= 1'b1;
-      end else begin
-        ramp_cnt_q  <= ramp_cnt_q + RAMP_CNT_W'(1);
+    end else begin
+      if (phase_q != SYS_RAMP) begin
+        ramp_cnt_q  <= '0;
+        ramp_done_q <= 1'b0;
+      end else if (!ramp_done_q) begin
+        if (ramp_cnt_q == RAMP_CNT_W'(RAMP_CLOCKS - 1)) begin
+          ramp_cnt_q  <= ramp_cnt_q + RAMP_CNT_W'(1);
+          ramp_done_q <= 1'b1;
+        end else begin
+          ramp_cnt_q  <= ramp_cnt_q + RAMP_CNT_W'(1);
+        end
+      end
+
+      if (sd_soft_clr_o) begin
+        ramp_cnt_q  <= '0;
+        ramp_done_q <= 1'b0;
+
       end
     end
   end
@@ -346,17 +400,38 @@ module system_controller
       // Tek istisna asagidaki start_pending_q: BITMEKTE olan bir transferin
       // son cevriminde gelen START, sirayla kabul edilir (back-to-back).
       // -----------------------------------------------------------------
+      // A REFUSAL IS A COMPLETION, SO IT HAS TO SET DONE AS WELL AS ERR.
+      //
+      // R-IF-4: "STATUS.DONE shall be set on completion of every started
+      // transfer, success or failure, and ERR shall hold the outcome. Exactly
+      // one completion shall be reported per start." A refused START is a
+      // started transfer that failed, so it owes the host a DONE.
+      //
+      // Setting only ERR -- which is what this did -- leaves a driver that
+      // polls DONE waiting for ever, which is also an R-IF-9 deadlock: the
+      // wait is unbounded and nothing ever ends it. The symptom in
+      // tb_coverage was a CTRL.START written with no card in the slot: ERR
+      // read back ERR_NO_CARD immediately and STATUS.DONE never rose.
+      //
+      // done_q is cleared above by accept_i and set by xfer_done_i, both from
+      // L3. Neither happens here, because a refused request never reaches L3
+      // at all -- which is exactly why the assignment has to be made here.
+      // This branch runs after that one in the same always_ff, so on the
+      // impossible-by-construction cycle where both fire, the refusal wins.
       if (start_i) begin
         if (!card_present_q) begin
           err_q      <= ERR_NO_CARD;
           err_seen_q <= 1'b1;
+          done_q     <= 1'b1;
         end else if (!init_done_i) begin
           err_q      <= ERR_CARD_STATE;
           err_seen_q <= 1'b1;
+          done_q     <= 1'b1;
         end else if (line_phase && !xfer_done_i && !xfer_err_i) begin
           // Devam eden transferin ustune START: sira hatasi.
           err_q      <= ERR_PROTOCOL;
           err_seen_q <= 1'b1;
+          done_q     <= 1'b1;
         end else begin
           start_pending_q <= 1'b1;
         end
@@ -364,7 +439,11 @@ module system_controller
 
       unique case (phase_q)
         SYS_RESET: begin
-          if (soft_rst_n_q && !soft_reset_i) begin
+          // Soft reset penceresinin TAMAMI bitmeden cikilmaz: istek hala
+          // ayaktaysa (soft_req_q) ya da bu alandaki clear hala uygulaniyorsa
+          // (soft_clr_o) beklenir. Eskiden kosul soft_rst_n_q idi, yani tek bir
+          // sayac; simdi pencere onaya da bagli.
+          if (!soft_req_q && !soft_clr_o) begin
             phase_q <= SYS_CARD_DETECT;
           end
         end
@@ -409,7 +488,10 @@ module system_controller
         start_pending_q <= 1'b0;
         xfer_launch_q   <= 1'b0;
       end
-      if (soft_reset_i) begin
+      // Darbe degil SEVIYE: soft_clr_o pencere boyunca yuksek kalir, yani faz
+      // cekirdek temizlenirken SYS_RESET'ten cikamaz. soft_reset_i'nin kendisi
+      // tek clk cevrimi genisliginde ve yalnizca istegi KURMAK icin kullanilir.
+      if (soft_clr_o) begin
         phase_q         <= SYS_RESET;
         cfg_start_q     <= 1'b0;
         start_pending_q <= 1'b0;
@@ -441,11 +523,21 @@ module system_controller
                                    (init_err_i & ~init_err_d_q);
 
   // card_present port uzerinden gelmiyor: debounce'u bu modul yapiyor.
+  // card_ready and speed come from the init ladder in the sd_clk_core domain
+  // and used to reach the AXI read mux combinationally. That made
+  // init_mode_q -> STATUS -> the whole 64-way RDATA mux -> RDATA one path of
+  // 8.960 ns, and it was what kept the design from closing 20 % faster
+  // (constr/ultra_sd_margin20.sdc) once the L3 status outputs were registered.
+  //
+  // One cycle of sys_clk costs nothing here: both fields are quasi-static --
+  // the ladder writes them once per card insertion and never again
+  // (cdc.md row 11) -- and the register also turns a combinational
+  // divided-clock crossing into a plain flop-to-flop one.
   assign status_o[STATUS_BUSY_BIT]           = busy_i;
   assign status_o[STATUS_DONE_BIT]           = done_q;
   assign status_o[STATUS_CARD_PRES_BIT]      = card_present_q;
-  assign status_o[STATUS_CARD_RDY_BIT]       = card_ready_i;
-  assign status_o[STATUS_SPEED_LSB +: 2]     = speed_i;
+  assign status_o[STATUS_CARD_RDY_BIT]       = card_ready_q;
+  assign status_o[STATUS_SPEED_LSB +: 2]     = speed_q;
   // Table 5-1 genislik alani L1'in GERCEKTEN surdugu maskeyi soyler
   // (bus_wide_q, transfer boyunca donmus olan), kartin yetenegini degil.
   assign status_o[STATUS_BUS_WIDTH_LSB +: 2] = {1'b0, bus_wide_q};
@@ -477,21 +569,33 @@ module system_controller
 
   assign phase_ok = (phase_q != SYS_RESET) && (phase_q != SYS_CARD_DETECT);
 
-  always_ff @(posedge sd_clk_i or negedge core_rst_n_o) begin
-    if (!core_rst_n_o) begin
+  always_ff @(posedge sd_clk_i or negedge sd_rst_n_o) begin
+    if (!sd_rst_n_o) begin
       drain_cnt_q  <= DRAIN_CNT_W'(DRAIN_SD_CLK);
       drain_done_q <= 1'b0;
-    end else if (phase_ok) begin
-      drain_cnt_q  <= DRAIN_CNT_W'(DRAIN_SD_CLK);
-      drain_done_q <= 1'b0;
-    end else if (drain_cnt_q != '0) begin
-      drain_cnt_q  <= drain_cnt_q - DRAIN_CNT_W'(1);
     end else begin
-      drain_done_q <= 1'b1;
+      if (phase_ok) begin
+        drain_cnt_q  <= DRAIN_CNT_W'(DRAIN_SD_CLK);
+        drain_done_q <= 1'b0;
+      end else if (drain_cnt_q != '0) begin
+        drain_cnt_q  <= drain_cnt_q - DRAIN_CNT_W'(1);
+      end else begin
+        drain_done_q <= 1'b1;
+      end
+
+      if (sd_soft_clr_o) begin
+        drain_cnt_q  <= DRAIN_CNT_W'(DRAIN_SD_CLK);
+        drain_done_q <= 1'b0;
+
+      end
     end
   end
 
-  assign sd_clk_en  = phase_ok || (busy_i && !drain_done_q);
+  // soft_req_q terimi bir DEADLOCK kapatiyor: soft reset fazi SYS_RESET'e
+  // suruyor, phase_ok dusuyor ve saat gate'leniyordu. Gate'li saatle sd alani
+  // SENKRON clear'i hic goremez, onay hic gelmez, istek hic birakilmaz. Senkron
+  // bir clear'in uygulanmasi icin saatin kosmasi SART.
+  assign sd_clk_en  = phase_ok || (busy_i && !drain_done_q) || soft_req_q;
   assign sd_clk_div = (phase_q == SYS_RAMP) ? CFG_CLK_W'(INIT_CLK_DIV)
                                             : clk_div_i;
 

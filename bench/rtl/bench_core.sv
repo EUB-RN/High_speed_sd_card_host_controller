@@ -192,6 +192,24 @@ module bench_core
   localparam int SUITE_EDGE      = 2;
   localparam int SUITE_CTRL      = 3;
   localparam int SUITE_SOAK      = 4;
+  // SUITE_DEG: the Section 7.4 graceful-degradation procedure, on hardware.
+  //
+  // The reduced-clock leg of that procedure is already covered by SUITE_TIER's
+  // characterisation sweep, which verifies payload at five frequencies from
+  // 49.5 MHz down to 399 kHz. What no other suite does on hardware is the other
+  // two fallbacks, and they have a sequencing requirement that is easy to get
+  // wrong: CFG_PHY.FORCE_1BIT narrows the HOST only. The card's width is
+  // whatever the init ladder's ACMD6 left it at, so setting the bit after init
+  // desynchronises the two and corrupts every transfer for a reason that has
+  // nothing to do with degradation.
+  //
+  // So the force bits have to be set and then the ladder re-run:
+  //   write CFG_PHY, pulse CTRL.SOFT_RESET, wait for CARD_READY to DROP, wait
+  //   for it to rise again, and only then read STATUS.
+  // The drop is not optional. Polling for CARD_READY straight after the reset
+  // reads the stale 1 from the previous initialisation and reports success
+  // without having tested anything.
+  localparam int SUITE_DEG       = 5;
 
   // ---- SUITE_EDGE: payload patterns ----------------------------------------
   // The LFSR is the right generator for a 64 MB run and the wrong one for
@@ -368,7 +386,12 @@ module bench_core
   // forever and not one byte ever left the UART. That is exactly backwards; a
   // failed run is when the report matters most. These two say where it died.
   logic               fail_q;
-  logic [4:0]         fail_from_q;
+  // Six bits, not five. The sequencer passed 32 states when SUITE_DEG was
+  // added, and FAILFROM has to carry the whole state number: a truncated one
+  // names a different state than the one that failed, which is worse than no
+  // number at all. Every state number documented in the README keeps its
+  // value -- the new states are appended, not inserted.
+  logic [5:0]         fail_from_q;
 
 
   // ---- stream handshakes --------------------------------------------------
@@ -479,11 +502,13 @@ module bench_core
           end
         end
 
-        // Three register writes, then START. R-IF-3: the core latches LBA,
-        // BLOCKS and XFER at the START write, so only "START last" matters.
+        // Four register writes, then START: LBA, BLOCKS, XFER, STAT_CLEAR.
+        // It was three while BLOCKS and XFER shared one packed word; Table 5-1
+        // gives them a register each. R-IF-3: the core latches LBA, BLOCKS and
+        // XFER at the START write, so only "START last" matters.
         X_SETUP: begin
           if (rsp_valid) begin
-            if (step_q == 3'd2) xst_q  <= X_GO;
+            if (step_q == 3'd3) xst_q  <= X_GO;
             else                step_q <= step_q + 3'd1;
           end
         end
@@ -581,7 +606,7 @@ module bench_core
   // ===========================================================================
   // Outer sequencer
   // ===========================================================================
-  typedef enum logic [4:0] {
+  typedef enum logic [5:0] {
     S_INIT_WAIT,
     S_READ_INFO,
     S_SET_CFG,
@@ -628,7 +653,15 @@ module bench_core
     // SUITE_SOAK: ayni cifti tekrar tekrar, sayac capraz kontroluyle.
     S_SK_WR,
     S_SK_RD,
-    S_SK_NEXT
+    S_SK_NEXT,
+    // SUITE_DEG: force the fallbacks, re-initialise, check what STATUS says,
+    // then do real verified work in the degraded mode.
+    S_DG_SET,
+    S_DG_RESET,
+    S_DG_DROP,
+    S_DG_WAIT,
+    S_DG_WR,
+    S_DG_RD
   } sstate_e;
 
   sstate_e     sst_q;
@@ -681,6 +714,22 @@ module bench_core
   // and every efficiency figure in the tier report is wrong with it.
   logic [31:0] sk_iter_q, sk_mism_q, sk_retry_q;
   logic [2:0]  sk_ck_q;
+  // Iterations still to go before the next checkpoint.
+  //
+  // This used to be `(sk_iter + 1) % (SOAK_ITERS / NDIV) == 0`, and that was a
+  // 32-bit modulo by a build-time constant: a divider, in the middle of the
+  // sequencer, on a path that has to meet the system clock. The cost was not
+  // theoretical. At SOAK_ITERS = 1000 the benchmark bitstream came out at 7333
+  // logic cells with 1068 setup-violated endpoints and produced no UART output
+  // at all; at 20 it was fine, because 20/5 = 4 and a modulo by a power of two
+  // is a mask. The iteration count is a measurement parameter and must not
+  // change whether the bitstream closes timing.
+  //
+  // A down-counter costs one comparison against zero, is the same size at
+  // every iteration count, and drops the requirement that SOAK_ITERS divide
+  // exactly by NDIV.
+  localparam int SK_CK_EVERY = ((SOAK_ITERS / NDIV) < 1) ? 1 : (SOAK_ITERS / NDIV);
+  logic [31:0] sk_ck_cnt_q;
   logic [31:0] sk_iter_a  [NDIV];
   logic [31:0] sk_mism_a  [NDIV];
   logic [31:0] sk_retry_a [NDIV];
@@ -765,6 +814,24 @@ module bench_core
       5'd19: pat_q = 3'(PAT_SSO);
       default: ;
     endcase
+
+    // ---- SUITE_DEG wants ordinary data and nothing else -------------------
+    // The degradation suite asks whether the core reports its fallback mode
+    // truthfully and still moves a block in it. The payload-pattern table
+    // above is for finding a stuck datapath and has nothing to do with that,
+    // so pinning the pattern to the LFSR is not just tidiness: it collapses
+    // the pattern multiplexer, and that multiplexer sits in the middle of the
+    // bench's longest combinational chain -- rd_word, the beat comparator.
+    // Left free, the chain missed the system clock by 1.2 ns and the
+    // degradation bitstream came out with 186 setup-violated endpoints.
+    if (SUITE == SUITE_DEG) begin
+      pat_q      = 3'(PAT_LFSR);
+      eg_blocks  = 24'(SOAK_BLOCKS);
+      eg_lba     = 32'(LBA_BASE);
+      eg_err_exp = 8'(ERR_OK);
+      eg_verify  = 1'b1;
+      eg_rdonly  = 1'b0;
+    end
 
     // ---- SUITE_CTRL overrides the table above -----------------------------
     // Recovery, not throughput: what the core does when a transfer is taken away
@@ -1125,13 +1192,11 @@ module bench_core
           rq_we    = 1'b1;
           case (step_q)
             3'd0:    begin rq_addr = REG_LBA;    rq_wdata = x_lba;          end
-            // BLOCKS and DIR share the packed XFER_CFG register.  Writing the
-            // compatibility aliases separately would make the second write
-            // clear the first field when all byte strobes are active.
-            3'd1: begin
-              rq_addr  = REG_XFER_CFG;
-              rq_wdata = {x_dir, 7'h00, x_blocks};
-            end
+            // BLOCKS (0x14) and XFER (0x18) are separate registers in
+            // Table 5-1, so this is two writes. They used to be one packed
+            // word, which is what the step counter below grew a step for.
+            3'd1:    begin rq_addr = REG_BLOCKS; rq_wdata = 32'(x_blocks);  end
+            3'd2:    begin rq_addr = REG_XFER;   rq_wdata = 32'(x_dir);     end
             // Counters cleared immediately before START, so STAT_GAP, STAT_BUSY
             // and STAT_DATA describe THIS transfer and nothing else (procedure
             // step 4). Without it they accumulate across runs, and both the
@@ -1182,17 +1247,39 @@ module bench_core
               rq_valid = 1'b1;
               rq_addr  = info_step_q ? REG_CARD_BLK : REG_VERSION;
             end
+            // Degradation: set the force bits, then pulse SOFT_RESET, then
+            // poll STATUS through the drop and the rise.
+            S_DG_SET: begin
+              rq_valid = 1'b1;
+              rq_we    = 1'b1;
+              rq_addr  = REG_CFG_PHY;
+              rq_wdata = 32'((1 << CFG_PHY_FORCE_1BIT) |
+                             (1 << CFG_PHY_FORCE_DS));
+            end
+            S_DG_RESET: begin
+              rq_valid = 1'b1;
+              rq_we    = 1'b1;
+              rq_addr  = REG_CTRL;
+              rq_wdata = 32'(1 << CTRL_SOFT_RESET_BIT);
+            end
+            S_DG_DROP, S_DG_WAIT: begin
+              rq_valid = 1'b1;
+              rq_addr  = REG_STATUS;
+            end
             S_SET_CFG, S_CHAR_SET, S_TM_SET: begin
               rq_valid = 1'b1;
               rq_we    = 1'b1;
               case (cfg_step_q)
-                2'd0, 2'd1: begin
-                  // CFG_CLK and CFG_PHY are fields of the same packed word.
-                  rq_addr  = REG_HW_CFG;
-                  rq_wdata = {18'h0, 2'h0, phase_q,
-                              (sst_q == S_SET_CFG)
-                                ? 8'(DIV_TARGET)
-                                : DIV_TABLE[int'(div_idx_q)*8 +: 8]};
+                // CFG_CLK (0x1C) and CFG_PHY (0x20) are separate registers.
+                2'd0: begin
+                  rq_addr  = REG_CFG_CLK;
+                  rq_wdata = 32'((sst_q == S_SET_CFG)
+                                   ? 8'(DIV_TARGET)
+                                   : DIV_TABLE[int'(div_idx_q)*8 +: 8]);
+                end
+                2'd1: begin
+                  rq_addr  = REG_CFG_PHY;
+                  rq_wdata = {26'h0, 2'h0, phase_q};
                 end
                 // Counters are cleared immediately before each timed transfer,
                 // so STAT_GAP and STAT_BUSY describe that transfer alone
@@ -1466,6 +1553,7 @@ module bench_core
       ct_at_q    <= '0;
       ct_wdata_q <= '0;
       sk_iter_q  <= '0;
+      sk_ck_cnt_q <= 32'(SK_CK_EVERY - 1);
       sk_mism_q  <= '0;
       sk_retry_q <= '0;
       sk_ck_q    <= '0;
@@ -1501,7 +1589,7 @@ module bench_core
             init_cyc_q <= '0;
             sst_q      <= S_INIT_WAIT;
           end else if (init_cyc_q > 32'(PROBE_TIMEOUT_CYC)) begin
-            fail_from_q <= 5'(sst_q);
+            fail_from_q <= 6'(sst_q);
             sst_q       <= S_FAIL;
           end
         end
@@ -1517,7 +1605,7 @@ module bench_core
             end
           end
           if (init_cyc_q > 32'(INIT_TIMEOUT_CYC)) begin
-            fail_from_q <= 5'(sst_q);
+            fail_from_q <= 6'(sst_q);
             sst_q       <= S_FAIL;
           end
         end
@@ -1542,6 +1630,7 @@ module bench_core
                           : (SUITE == SUITE_EDGE)   ? S_EG_SET
                           : (SUITE == SUITE_CTRL)   ? S_EG_SET
                           : (SUITE == SUITE_SOAK)   ? S_SK_WR
+                          : (SUITE == SUITE_DEG)    ? S_DG_SET
                                                     : S_SET_CFG;
             end
           end
@@ -1591,7 +1680,7 @@ module bench_core
               sst_q      <= S_SET_CFG;
             end else begin
               err_last_q <= 32'(s_err_q[ERR_LSB +: 8]);
-              fail_from_q <= 5'(sst_q);
+              fail_from_q <= 6'(sst_q);
               sst_q      <= S_FAIL;
             end
           end
@@ -1616,7 +1705,7 @@ module bench_core
               sst_q      <= S_SET_CFG;
             end else begin
               err_last_q <= 32'(s_err_q[ERR_LSB +: 8]);
-              fail_from_q <= 5'(sst_q);
+              fail_from_q <= 6'(sst_q);
               sst_q      <= S_FAIL;
             end
           end
@@ -1946,10 +2035,11 @@ module bench_core
 
         S_SK_NEXT: begin
           sk_iter_q <= sk_iter_q + 32'd1;
-          // A checkpoint every SOAK_ITERS/NDIV pairs, and the last iteration
+          // A checkpoint every SK_CK_EVERY pairs, and the last iteration
           // always lands on one so the final row is the final state.
-          if ((((sk_iter_q + 32'd1) % 32'(SOAK_ITERS / NDIV)) == 32'd0) &&
-              (sk_ck_q < 3'(NDIV))) begin
+          if (sk_ck_cnt_q == 32'd0) sk_ck_cnt_q <= 32'(SK_CK_EVERY - 1);
+          else                      sk_ck_cnt_q <= sk_ck_cnt_q - 32'd1;
+          if ((sk_ck_cnt_q == 32'd0) && (sk_ck_q < 3'(NDIV))) begin
             sk_iter_a [int'(sk_ck_q)] <= sk_iter_q + 32'd1;
             sk_mism_a [int'(sk_ck_q)] <= sk_mism_q;
             sk_retry_a[int'(sk_ck_q)] <= sk_retry_q;
@@ -1969,6 +2059,79 @@ module bench_core
             x_blocks <= 24'(SOAK_BLOCKS);
             x_start  <= 1'b1;
             sst_q    <= S_SK_WR;
+          end
+        end
+
+        // ---- SUITE_DEG -----------------------------------------------------
+        // One register write per state, each waiting for its own write
+        // response: the AXI master here carries one request at a time and a
+        // state that fires a second write before the first is answered loses
+        // it silently.
+        S_DG_SET:   if (rsp_valid) sst_q <= S_DG_RESET;
+        S_DG_RESET: if (rsp_valid) begin
+          // init_cyc_q is borrowed as the timeout for the re-initialisation,
+          // the same way S_PROBE_VER borrows it, so it starts here. INIT_ms is
+          // already captured by this point and is not disturbed.
+          init_cyc_q <= '0;
+          sst_q      <= S_DG_DROP;
+        end
+
+        // CARD_READY must go DOWN first. See the SUITE_DEG comment at the top
+        // for why reading it straight after the reset proves nothing.
+        S_DG_DROP: begin
+          init_cyc_q <= init_cyc_q + 32'd1;
+          if (rsp_valid && !rsp_rdata[STATUS_CARD_RDY_BIT]) begin
+            init_cyc_q <= '0;
+            sst_q      <= S_DG_WAIT;
+          end
+          if (init_cyc_q > 32'(INIT_TIMEOUT_CYC)) begin
+            fail_from_q <= 6'(sst_q);
+            sst_q       <= S_FAIL;
+          end
+        end
+
+        S_DG_WAIT: begin
+          init_cyc_q <= init_cyc_q + 32'd1;
+          if (rsp_valid && rsp_rdata[STATUS_CARD_RDY_BIT]) begin
+            // The degraded STATUS is the measurement: BUS_WIDTH and SPEED_MODE
+            // have to report the mode actually negotiated, not the one asked
+            // for (R-DEG-5).
+            status_q <= rsp_rdata;
+            x_dir    <= 1'b1;
+            x_lba    <= 32'(LBA_BASE);
+            x_blocks <= 24'(SOAK_BLOCKS);
+            x_start  <= 1'b1;
+            sst_q    <= S_DG_WR;
+          end
+          if (init_cyc_q > 32'(INIT_TIMEOUT_CYC)) begin
+            fail_from_q <= 6'(sst_q);
+            sst_q       <= S_FAIL;
+          end
+        end
+
+        // Real verified work in the degraded mode. A core that reports 1-bit
+        // Default Speed correctly and then cannot move a block has not
+        // degraded gracefully, it has just described its own failure.
+        S_DG_WR: begin
+          if (x_done) begin
+            if (s_err_q[ERR_LSB +: 8] != 8'(ERR_OK))
+              err_last_q <= 32'(s_err_q[ERR_LSB +: 8]);
+            x_dir    <= 1'b0;
+            x_lba    <= 32'(LBA_BASE);
+            x_blocks <= 24'(SOAK_BLOCKS);
+            x_start  <= 1'b1;
+            sst_q    <= S_DG_RD;
+          end
+        end
+
+        S_DG_RD: begin
+          if (x_done) begin
+            mism_total_q <= mism_total_q + mism_q;
+            retry_q      <= retry_q + s_retry_q;
+            if (s_err_q[ERR_LSB +: 8] != 8'(ERR_OK))
+              err_last_q <= 32'(s_err_q[ERR_LSB +: 8]);
+            rep_start <= 1'b1;
+            sst_q     <= S_REPORT;
           end
         end
 
@@ -2011,7 +2174,7 @@ module bench_core
           rep_start <= 1'b1;
           sst_q     <= S_REPORT;
         end
-        default: begin fail_from_q <= 5'(sst_q); sst_q <= S_FAIL; end
+        default: begin fail_from_q <= 6'(sst_q); sst_q <= S_FAIL; end
       endcase
     end
   end

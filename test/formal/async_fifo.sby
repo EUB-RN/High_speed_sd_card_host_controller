@@ -1,0 +1,40 @@
+# SymbiYosys driver for the commit/rewind FIFO proof.
+#
+#   sby -f test/formal/async_fifo.sby
+#
+# Same two-task split as axi4_lite_slave.sby and for the same reason: `bmc` is
+# the quick answer while a property is being written, `prove` runs induction as
+# well and is what makes a pass a statement about all time.
+#
+# DEPTH is 4 rather than the 1024 the design instantiates. The properties are
+# all pointer algebra, and the pointers are AW+1 bits wide precisely so that
+# full and empty can be told apart at a wrap -- which DEPTH 4 reaches in four
+# cycles and DEPTH 1024 would not reach inside any practical bound. Proving it
+# at a depth the solver can wrap is the stronger result, not the weaker one.
+#
+# DEPTH 8 also passes BMC, but the solver slows sharply past step 25 on it --
+# minutes per step -- and the extra width buys nothing here: every property is
+# about the pointers wrapping, and 4 wraps them.
+
+[tasks]
+bmc
+prove
+
+[options]
+bmc:   mode bmc
+bmc:   depth 24
+prove: mode prove
+prove: depth 24
+multiclock off
+
+[engines]
+smtbmc z3
+
+[script]
+read -formal -D FORMAL async_fifo.sv
+read -formal -D FORMAL fasync_fifo.sv
+prep -top fasync_fifo
+
+[files]
+fasync_fifo.sv
+../../rtl/axi4/async_fifo.sv

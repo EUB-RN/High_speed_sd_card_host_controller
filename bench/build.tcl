@@ -41,10 +41,14 @@ add_file ../rtl/ultra_sd_reg.sv
 add_file ../rtl/axi4/ultra_sd_axi_top.sv
 add_file ../rtl/ultra_sd_block.sv
 add_file ../rtl/ultra_sd_cmd.sv
+add_file ../rtl/ultra_sd_cmd_tx.sv
+add_file ../rtl/ultra_sd_init.sv
+add_file ../rtl/ultra_sd_protocol.sv
 add_file ../rtl/crc/ultra_sd_crc7.sv
 add_file ../rtl/crc/ultra_sd_crc16.sv
 add_file ../rtl/ultra_sd_line.sv
 add_file ../rtl/clk_controller.sv
+add_file ../rtl/rst_sync.sv
 add_file ../rtl/system_controller.sv
 add_file ../rtl/ultra_sd_phy_gowin.sv
 add_file ../rtl/ultra_sd_top.sv

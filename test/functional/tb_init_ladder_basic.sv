@@ -1,16 +1,7 @@
 `timescale 1ns/1ps
 
-// -----------------------------------------------------------------------------
-// tb_init_ladder_basic
-//   Merdivenin mutlu yolu. ultra_sd_init artik ayri bir modul degil: merdiven
-//   ultra_sd_cmd'in icinde ve istegini modul icinde komut motoruna veriyor
-//   (ultra_sd_top'taki arbitrasyon mux'u bu yuzden kalkti). Dolayisiyla bu test
-//   artik req/rsp portlarini degil GERCEK CMD HATTINI surluyor: kart tarafi
-//   common/cmd_line_resp.svh ile davranissal.
-//
-//   Merdivenin hangi komutu istedigi hiyerarsik olarak okunuyor (dut.ld_*):
-//   gozlem icin RTL'e port eklemek gerekmiyor.
-// -----------------------------------------------------------------------------
+// Initialization policy and command transport are tested together through
+// ultra_sd_protocol against responses driven on the actual CMD interface.
 module tb_init_ladder_basic;
   import ultra_sd_pkg::*;
 
@@ -28,7 +19,6 @@ module tb_init_ladder_basic;
   logic dat_rd_valid_i, dat_rd_busy_i, dat_rd_crc_ok_i;
   logic [15:0] rca_o;
   logic [31:0] card_blk_o;
-  logic block_addr_o;
   speed_e speed_o;
   logic bus_4bit_o;
   logic [CFG_CLK_W-1:0] clk_div_o;
@@ -41,24 +31,24 @@ module tb_init_ladder_basic;
 
   always #5 cmd_clk = ~cmd_clk;
 
-  ultra_sd_cmd #(
+  ultra_sd_protocol #(
     .NCR_TIMEOUT_CLK(16), .NCC_GAP_CLK(2), .CMD_RETRIES(1),
     .CLK_DIV_INIT(20), .CLK_DIV_DS(4), .CLK_DIV_HS(2),
     .ACMD41_TIMEOUT_CLK(32), .DAT_TIMEOUT_CLK(32),
     .SCR_CHECK(1'b0), .HS_ENABLE(1'b0)
   ) dut (
-    .cmd_clk, .rst_n,
+    .cmd_clk, .rst_n, .soft_clr(1'b0),
     // L3 portu bos: merdiven hatta sahip.
     .req_valid_i(1'b0), .req_index_i(6'd0), .req_arg_i(32'h0),
     .req_resp_i(idle_resp), .req_is_acmd_i(1'b0), .req_ready_o(req_ready_o),
     .rsp_valid_o(rsp_valid_o), .rsp_data_o(rsp_data_o),
     .rsp_crc_ok_o(rsp_crc_ok_o), .rsp_err_o(rsp_err_o), .err_o(err_o),
     .card_ready_o(card_ready_o),
-    .card_present_i, .ramp_done_i,
+    .card_present_i, .ramp_done_i, .force_1bit_i(1'b0), .force_ds_i(1'b0),
     .init_busy_o, .init_done_o, .init_err_o, .init_err_code_o,
     .dat_rd_start_o, .dat_rd_bytes_o,
     .dat_rd_data_i, .dat_rd_valid_i, .dat_rd_busy_i, .dat_rd_crc_ok_i,
-    .rca_o, .card_blk_o, .block_addr_o, .speed_o, .bus_4bit_o, .clk_div_o,
+    .rca_o, .card_blk_o, .speed_o, .bus_4bit_o, .clk_div_o,
     .stat_clear_tgl_i(1'b0), .stat_retry_cmd_o(stat_retry_cmd_o),
     .cmd_out_o(cmd_out), .cmd_oe_o(cmd_oe), .cmd_in_i(cmd_in)
   );
@@ -103,7 +93,7 @@ module tb_init_ladder_basic;
 
     capture_command(CMD9_SEND_CSD);
     check(cap_arg == 32'h1234_0000, "CMD9 addresses the negotiated RCA");
-    csd = '0; csd[119:118] = 2'b01; csd[61:40] = 22'd1023; send_long(csd);
+    csd = {120{1'b1}}; csd[119:118] = 2'b01; csd[61:40] = 22'h2A_95C3; send_long(csd);
 
     capture_command(CMD7_SELECT_CARD);
     send_short(CMD7_SELECT_CARD, 32'h00000100, 1);
@@ -121,8 +111,7 @@ module tb_init_ladder_basic;
     check(init_done_o && !init_busy_o && !init_err_o && init_err_code_o == ERR_OK,
           "initialisation completes cleanly");
     check(rca_o == 16'h1234, "RCA decoded");
-    check(block_addr_o, "CCS selects block addressing");
-    check(card_blk_o == 32'd1048576, "CSD v2 capacity decoded");
+    check(card_blk_o == ((32'h002A_95C3 + 32'd1) << 10), "CSD v2 capacity decoded");
     check(bus_4bit_o, "4-bit mode selected");
     check(speed_o == SPEED_DS && clk_div_o == 8'd4, "Default Speed selected");
     check(stat_retry_cmd_o == 16'd0, "clean ladder spends no command retry");
@@ -133,6 +122,22 @@ module tb_init_ladder_basic;
     // tek cevrim bekleyip "temizlenmedi" demek senkronizeri hata sayardi.
     repeat (3) @(posedge cmd_clk); #1;
     check(!init_done_o && rca_o == 0 && card_blk_o == 0, "card removal clears state");
+
+    // An SDSC card -- OCR.CCS = 0 -- is byte-addressed and out of scope
+    // (Section 3.2, R-FUNC-5). The ladder has to stop at ACMD41 rather than
+    // carry a second addressing mode through every layer below it.
+    card_present_i = 1;
+    repeat (3) @(posedge cmd_clk);
+    capture_command(CMD0_GO_IDLE_STATE);
+    capture_command(CMD8_SEND_IF_COND);
+    send_short(CMD8_SEND_IF_COND, 32'h000001aa, 1);
+    capture_command(CMD55_APP_CMD);
+    send_short(CMD55_APP_CMD, 32'h00000100, 1);
+    capture_command(ACMD41_SD_SEND_OP_COND);
+    send_short(6'h3f, 32'h80000000, 0);   // powered up, CCS = 0
+    repeat (6) @(posedge cmd_clk); #1;
+    check(init_err_o && !init_done_o && init_err_code_o == ERR_UNSUPPORTED,
+          "SDSC card (CCS = 0) is rejected as unsupported");
 
     if (failures) begin
       $display("tb_init_ladder_basic: FAILED (%0d/%0d)", failures, checks);

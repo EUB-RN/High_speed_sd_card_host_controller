@@ -97,6 +97,20 @@ module vip_axi_top
   output logic              sd_saw_pl_last     // sticky: a tlast reached the SD side
 );
 
+  // ---- transfer launch, standing in for system_controller --------------------
+  logic [ultra_sd_pkg::CTRL_W-1:0] ctrl_w;
+  logic                            ctrl_start_q;
+  logic                            xfer_launch;
+
+  always_ff @(posedge clk or negedge rst_n) begin
+    if (!rst_n) ctrl_start_q <= 1'b0;
+    else        ctrl_start_q <= ctrl_w[ultra_sd_pkg::CTRL_START_BIT];
+  end
+
+  // Rising edge only: CTRL holds its written value, so a level would re-launch
+  // the engine on every cycle after the first.
+  assign xfer_launch = ctrl_w[ultra_sd_pkg::CTRL_START_BIT] && !ctrl_start_q;
+
   // ---- SD-domain producer for the read path ---------------------------------
   logic              sd_rd_pl_en;
   logic [DATA_W-1:0] sd_rd_pl_data;
@@ -154,6 +168,9 @@ module vip_axi_top
     .rst_n            (rst_n),
     .sd_clk           (sd_clk),
     .sd_rst_n         (sd_rst_n),
+    // Yazilim clear'i bu VIP'in konusu degil: iki alanda da sabit 0.
+    .sd_soft_clr      (1'b0),
+    .axi_soft_clr     (1'b0),
 
     .s_axil_awaddr    (s_axil_awaddr),
     .s_axil_awvalid   (s_axil_awvalid),
@@ -185,9 +202,30 @@ module vip_axi_top
 
     .irq              (irq),
 
-    // Register-file outputs. Observed through the VIP's own register reads,
-    // so nothing here needs to be a port of the harness.
-    .CTRL             (),
+    // THE READ STREAM NEEDS A LAUNCH PULSE AND NOTHING WAS GIVING IT ONE.
+    //
+    // ultra_sd_axi_top builds the read engine's start from
+    //   rd_start = xfer_launch && !XFER
+    // and xfer_launch is an INPUT: in the real design system_controller raises
+    // it for one cycle as it enters SYS_READ / SYS_WRITE. This harness has no
+    // system_controller -- the block layer is a stub -- and it was leaving the
+    // port unconnected, so rd_start was never asserted, beats_left_q stayed
+    // zero, xfer_busy stayed low and m_axis_rd_tvalid could never rise.
+    //
+    // That is why test_read_stream_no_backpressure and
+    // test_read_stream_backpressure timed out waiting for a frame while all
+    // ten other cocotb tests passed: the two write-stream tests do not go
+    // through this port, and the eight AXI-Lite tests never start a transfer.
+    // The RTL was never involved.
+    //
+    // CTRL.START is the right stand-in. The register file latches LBA/BLOCKS/
+    // XFER on the same write (R-IF-3), so a pulse derived from it carries
+    // exactly the ordering ultra_sd_axi_top expects, and ctrl_q below makes it
+    // one cycle wide the way system_controller's would be.
+    .xfer_launch      (xfer_launch),
+
+    // Register-file outputs. CTRL is observed now -- see above.
+    .CTRL             (ctrl_w),
     .LBA              (),
     .BLOCKS           (),
     .XFER             (),

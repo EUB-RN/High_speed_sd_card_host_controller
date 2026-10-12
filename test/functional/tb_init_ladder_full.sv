@@ -1,21 +1,12 @@
 `timescale 1ns/1ps
 
-// -----------------------------------------------------------------------------
-// tb_init_ladder_full
-//   Merdivenin yetenek pazarligi ve hata yollari. ultra_sd_init ayri bir modul
-//   olmaktan cikip ultra_sd_cmd'in icine girdigi icin (ultra_sd_top'taki
-//   arbitrasyon mux'u bu yuzden kalkti) bu test artik req/rsp portlarini degil
-//   GERCEK CMD HATTINI surluyor. Kart tarafi common/cmd_line_resp.svh.
-//
-//   Hata enjeksiyonu da gerceklesti: eskiden rsp_err_i + cmd_err_i ile istenen
-//   hata kodu dogrudan beslenirdi; simdi hata gercek sebebinden doguyor --
-//   yanit vermemek ERR_CMD_TIMEOUT, bozuk CMD8 echo'su ERR_UNSUPPORTED,
-//   DAT CRC'si ERR_DAT_CRC, hic DAT gelmemesi ERR_DAT_TIMEOUT.
-// -----------------------------------------------------------------------------
+// Initialization policy and command transport are tested together through
+// ultra_sd_protocol against responses driven on the actual CMD interface.
 module tb_init_ladder_full;
   import ultra_sd_pkg::*;
 
   logic cmd_clk = 0;
+  logic soft_clr = 0;
   logic rst_n, card_present_i, ramp_done_i;
   logic init_busy_o, init_done_o, init_err_o;
   err_e init_err_code_o;
@@ -29,7 +20,6 @@ module tb_init_ladder_full;
   logic dat_rd_valid_i, dat_rd_busy_i, dat_rd_crc_ok_i;
   logic [15:0] rca_o;
   logic [31:0] card_blk_o;
-  logic block_addr_o;
   speed_e speed_o;
   logic bus_4bit_o;
   logic [CFG_CLK_W-1:0] clk_div_o;
@@ -45,13 +35,13 @@ module tb_init_ladder_full;
 
   always #5 cmd_clk = ~cmd_clk;
 
-  ultra_sd_cmd #(
+  ultra_sd_protocol #(
     .NCR_TIMEOUT_CLK(16), .NCC_GAP_CLK(2), .CMD_RETRIES(1),
     .CLK_DIV_INIT(20), .CLK_DIV_DS(4), .CLK_DIV_HS(2),
     .ACMD41_TIMEOUT_CLK(32), .DAT_TIMEOUT_CLK(600),
     .SCR_CHECK(1'b1), .HS_ENABLE(1'b1)
   ) dut (
-    .cmd_clk, .rst_n,
+    .cmd_clk, .rst_n, .soft_clr,
     .req_valid_i(1'b0), .req_index_i(6'd0), .req_arg_i(32'h0),
     .req_resp_i(idle_resp), .req_is_acmd_i(1'b0), .req_ready_o(req_ready_o),
     .rsp_valid_o(rsp_valid_o), .rsp_data_o(rsp_data_o),
@@ -62,7 +52,7 @@ module tb_init_ladder_full;
     .init_busy_o, .init_done_o, .init_err_o, .init_err_code_o,
     .dat_rd_start_o, .dat_rd_bytes_o,
     .dat_rd_data_i, .dat_rd_valid_i, .dat_rd_busy_i, .dat_rd_crc_ok_i,
-    .rca_o, .card_blk_o, .block_addr_o, .speed_o, .bus_4bit_o, .clk_div_o,
+    .rca_o, .card_blk_o, .speed_o, .bus_4bit_o, .clk_div_o,
     .stat_clear_tgl_i(1'b0), .stat_retry_cmd_o(stat_retry_cmd_o),
     .cmd_out_o(cmd_out), .cmd_oe_o(cmd_oe), .cmd_in_i(cmd_in)
   );
@@ -196,8 +186,8 @@ module tb_init_ladder_full;
           "full SCR/High-Speed ladder completes");
     check(bus_4bit_o && speed_o == SPEED_HS && clk_div_o == 8'd2,
           "4-bit High-Speed result is committed");
-    check(rca_o == 16'h1234 && card_blk_o == 32'd1_048_576 && block_addr_o,
-          "identity, capacity and addressing survive full ladder");
+    check(rca_o == 16'h1234 && card_blk_o == 32'd1_048_576,
+          "identity and capacity survive full ladder");
 
     // 2. Graceful fallback: no 4-bit in SCR and switch result not HS.
     reset_case();
@@ -298,6 +288,16 @@ module tb_init_ladder_full;
     repeat (3) @(posedge cmd_clk); #1;   // iki flopluk senkronizer (cdc.md 8)
     check(!init_done_o && !init_err_o && rca_o == 0 && card_blk_o == 0,
           "card removal clears completed initialization state");
+
+    // Clear is the final override after the init FSM case statement.
+    @(negedge cmd_clk); soft_clr = 1;
+    repeat (2) @(posedge cmd_clk);
+    #1;
+    check(!init_busy_o && !init_done_o && !init_err_o,
+          "soft clear overrides initialization state");
+    check(rca_o == 0 && card_blk_o == 0 && speed_o == SPEED_INIT,
+          "soft clear resets negotiated card configuration");
+    @(negedge cmd_clk); soft_clr = 0;
 
     if (failures) begin
       $display("tb_init_ladder_full: FAILED (%0d/%0d)", failures, checks);

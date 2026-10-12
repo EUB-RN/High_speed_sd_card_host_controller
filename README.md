@@ -23,27 +23,41 @@ ultra_sd/
       async_fifo.sv        dual-clock FIFO, gray pointers (axi_clk <-> sd_clk)
       axis_rd_master.sv    AXI4-Stream master, read payload card -> host
       axis_wr_slave.sv     AXI4-Stream slave, write payload host -> card
-    ultra_sd_block.sv      LBA sequencing, streaming, retry and recovery
-    ultra_sd_stat.sv       Table 5-1 status view, Table 5-2 counters
-    ultra_sd_cmd.sv        command issue, response parsing
-    ultra_sd_cmd_arb.sv    shares the command port: init ladder vs data layer
-    ultra_sd_init.sv       initialisation FSM
-    ultra_sd_line.sv       CMD/DAT serialisation and framing
-    ultra_sd_crc.sv        CRC7 and one CRC16 lane
+    ultra_sd_block.sv      L3: LBA sequencing, streaming, retry and recovery
+    ultra_sd_protocol.sv   L2: init/block request selection and response routing
+    ultra_sd_cmd.sv        L2: command framing, response reception, CRC, retries
+    ultra_sd_init.sv       L2: initialisation ladder and capability negotiation
+    ultra_sd_line.sv       L1: CMD/DAT serialisation and framing
+    crc/ultra_sd_crc7.sv   CRC7 over the command frame
+    crc/ultra_sd_crc16.sv  CRC16, one lane
+    clk_controller.sv      SD clock divider, instantiated inside the PHY
+    system_controller.sv   reset, card detect, phase FSM, Table 5-1 view
+    rst_sync.sv            async assert / sync deassert reset synchroniser
     ultra_sd_phy_gowin.sv  the ONLY file with vendor primitives
   test/                    verification, one directory per category
     Makefile               `make` is the regression; see test/README.md
     common/                card model, AXI VIP, covergroups, checker macros
     unit/                  one module against its own contract
     functional/            end-to-end scenarios against the card model
+    integration/           adjacent layers together, and the bench suites
     vip/                   bus interfaces against the AMBA specification
-    error_injection/       hostile card, plus the R-DEL-7 RTL mutation runs
-    formal/                SVA properties and proofs
+    error_injection/       hostile card, plus mutation.sh (R-DEL-7)
+    formal/                SVA properties and SymbiYosys proofs
     coverage/              functional coverage closure
     stress/                long, randomised, soak
-    performance/           throughput and the characterisation sweep
+    performance/           throughput, counter cross-check, divisor sweep
+  bench/                   the on-board measurement harness (no soft CPU)
+    build.tcl              tier bitstream      -> impl/pnr/project.fs
+    build_soak.tcl         R-MEAS-5 soak       -> impl/pnr/soak.fs
+    build_deg.tcl          R-DEG-7 degradation -> impl/pnr/deg.fs
+    tools/uart_read        libftdi reader, FT2232H channel B, 115200 8N1
   constr/
-    ultra_sd.sdc           timing constraints (the .cst is supplied)
+    ultra_sd.sdc           timing constraints, sign-off
+    ultra_sd_margin20.sdc  the same design with 20% more clock
+  syn/
+    build.tcl              synthesis only
+    core_pnr/build.tcl     full P&R of the core alone; SDC_FILE picks the set
+    pnr_timing.py          fails on any violated endpoint -- gw_sh does not
   doc/
     README.md              build, integrate, register map, block diagram
     cdc.md                 every clock-domain crossing, if any
@@ -72,28 +86,33 @@ synthesizable top including the full hierarchy.
 |---|---|
 | L4 `axi4/` | AXI4-Lite + Table 5-1 register file + both stream adapters. The payload FIFOs support block-granular commit / rewind, which is what makes a CRC16 retry possible without a block buffer. |
 | L3 `ultra_sd_block.sv` | LBA sequencing, one CMD18 / CMD25 per request, ACMD23 pre-erase, per-block CRC retry, CMD12 + CMD13 local recovery, backpressure by stopping and resuming the stream. |
-| — `ultra_sd_stat.sv` | Table 5-1 read-only view and all Table 5-2 counters, in the SD clock domain, saturating, cleared by `CTRL.STAT_CLEAR`. |
-| L2 `ultra_sd_cmd.sv`, `ultra_sd_cmd_arb.sv`, `ultra_sd_init.sv` | Command issue and response decode, port arbitration between the init ladder and the data layer, the Table 6-1 ladder. |
+| — counters | There is no separate statistics module. Each Table 5-2 counter lives inside the FSM that generates its event, in that FSM's clock domain (R-IF-11), saturating, cleared by `CTRL.STAT_CLEAR`: `STAT_DATA`/`STAT_BUSY` in `ultra_sd_line`, `STAT_GAP` and the CRC half of `STAT_RETRY` in `ultra_sd_block`, the command half in `ultra_sd_cmd`. |
+| L2 `ultra_sd_cmd.sv`, `ultra_sd_protocol.sv`, `ultra_sd_init.sv` | Command issue and response decode, port arbitration between the init ladder and the data layer, the Table 6-1 ladder. |
 | L1 `ultra_sd_line.sv`, `crc/` | DAT framing, CRC7, CRC16 per lane. |
 | L0 `ultra_sd_phy_gowin.sv` | Pads, tristate, sampling phase, DQCE gating and DCS pad mux. The only file with vendor primitives. |
 
-Open: `ultra_sd_init` cannot yet read a data block over DAT (ACMD51 SCR and the
-CMD6 switch status), because L1's frame length is a parameter rather than a port
-and its single `start_i` is now driven by L3. Until that is resolved the High
-Speed switch is not verified (R-FUNC-3) and the ladder stays at Default Speed.
+The initialisation ladder reads data blocks over DAT (ACMD51 SCR and the CMD6
+switch status), so the High Speed switch is negotiated and verified rather than
+assumed, and the ladder reaches High Speed on a card that offers it. L1's frame
+length is a port and its `start_i` is shared between L3 and the init module,
+arbitrated in `ultra_sd_protocol`.
 
-Synthesis, `syn/build.tcl` (sources read straight from `rtl/`, no project file):
+Place and route of the core alone, `syn/core_pnr/build.tcl` (device pins from
+`syn/core_pnr/core_pnr_pins.cst`, timing from the constraint file named by
+`SDC_FILE`):
 
 | | |
 |---|---|
-| Logic | 2345 / 20736 — 2246 LUT, 81 ALU, 3 RAM16 |
-| Registers | 1261, no latches |
+| Logic | 2467 / 20736 — 2367 LUT, 100 ALU, 0 ROM16 |
+| Registers | 1328 / 16173, no latches |
 | BSRAM | 2 / 46 |
 | rPLL | 0 (R-CLK-5) |
-| Fmax (post-synthesis) | `clk` 135 MHz, `cmd_clk` 115 MHz, `line_clk` 109 MHz against a 100 MHz constraint |
+| Timing, sign-off constraints | 0 setup / 0 hold violated endpoints |
+| Timing, +20% margin constraints | 0 setup / 0 hold violated endpoints |
 
-Those are pre-place-and-route numbers for the core alone; the post-P&R figures
-of `reports/` need the harness that instantiates it.
+The +20% set is `constr/ultra_sd_margin20.sdc`: the same design re-closed with
+`clk` at 8.417 ns instead of 10.101 ns. Both runs and the reasoning behind what
+the margin does and does not scale are in [doc/report.md](doc/report.md).
 
 ## Build
 
@@ -126,3 +145,15 @@ and exists only for `iverilog` and `verilator`.
 - [doc/cdc.md](doc/cdc.md) -- clock-domain crossings (R-DEL-2)
 - [doc/report.md](doc/report.md) -- measurement report (R-DEL-4)
 - [doc/checklist.md](doc/checklist.md) -- submission checklist (Appendix C)
+
+Command transport and initialization are separate RTL modules. `ultra_sd_init`
+owns the startup sequence and card configuration; `ultra_sd_cmd` latches each
+accepted request and handles serialization, response reception, CRC and command
+retries. `ultra_sd_protocol` only selects init/block requests and routes responses.
+The response-frame event arms initialization DAT reads before the command gap
+finishes, and the init module captures data during that gap as well.
+
+The CMD receiver shares a 40-bit capture register between short responses and
+the used R2 fields (CSD_STRUCTURE and C_SIZE), plus one R2 end-bit flop. CRC7
+still covers the full response. The 136-bit response port is combinational:
+uncaptured R2 fields are zero, not a stored full CID/CSD image.

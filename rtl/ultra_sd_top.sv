@@ -18,9 +18,10 @@
 //     u_axi     ultra_sd_axi_top    L4: AXI4-Lite + register dosyasi + iki
 //                                   AXI4-Stream adaptoru (async FIFO'lar)
 //     u_block   ultra_sd_block      L3: LBA siralamasi, blok akisi
-//     u_cmd     ultra_sd_cmd        L2: komut gonderme, yanit cozme VE
-//                                   baslatma merdiveni (tek modul: ikisi
-//                                   ayriyken istekleri burada mux'lanıyordu)
+//     u_cmd     ultra_sd_protocol   L2: init/block request ownership and wiring
+//       u_init  ultra_sd_init       card initialization and configuration
+//       u_engine ultra_sd_cmd       command framing and response transport
+//         u_tx   ultra_sd_cmd_tx   CMD serialiser; split out for R-ARCH-3
 //     u_line    ultra_sd_line       L1: DAT cerceveleme
 //     u_phy     ultra_sd_phy_gowin  L0: pedler, uc-durum, ornekleme fazi
 //
@@ -68,7 +69,17 @@ module ultra_sd_top #(
   // misses a command sent exactly on it, and the symptom is the next command
   // going unanswered with no error anywhere -- the card simply never saw it.
   // Exposed so a board can be given more margin without editing this file.
-  parameter int NCC_GAP_CLK    = 8
+  parameter int NCC_GAP_CLK    = 8,
+  // Data-wait timeouts in SD clocks. Zero means "derive from SYS_CLK_HZ", which
+  // is what a real build wants and what the numbers below do. They are exposed
+  // because a testbench cannot reach them otherwise: the derived programming
+  // timeout is half a second of SD clocks, which at a simulation's clock rate
+  // is a second of simulated time, so the one error path that is defined by the
+  // timeout firing -- a card that never releases DAT0 -- could not be tested at
+  // all. Overriding them is also what R-DEG-7 asks for in general: adapting to
+  // a slower card should be a parameter, not an edit.
+  parameter int NAC_TIMEOUT_CLK_P  = 0,
+  parameter int PROG_TIMEOUT_CLK_P = 0
 ) (
   input  logic              clk,            // system clock, SYS_CLK_HZ
   input  logic              rst_n,          // async assert, sync deassert
@@ -143,14 +154,20 @@ module ultra_sd_top #(
   // Veri beklemeleri SD cevrimi cinsinden ve High Speed oranindan olceklenir:
   // Nac icin spec 100 ms'e kadar izin verir (hazard D-6), programlama
   // mesguliyeti icin 500 ms pay birakiyoruz (Table 7-1: erken vazgecme).
-  localparam int NAC_TIMEOUT_CLK  = SD_HZ_HS / 10;
-  localparam int PROG_TIMEOUT_CLK = SD_HZ_HS / 2;
+  localparam int NAC_TIMEOUT_CLK  = (NAC_TIMEOUT_CLK_P  != 0) ? NAC_TIMEOUT_CLK_P
+                                                              : SD_HZ_HS / 10;
+  localparam int PROG_TIMEOUT_CLK = (PROG_TIMEOUT_CLK_P != 0) ? PROG_TIMEOUT_CLK_P
+                                                              : SD_HZ_HS / 2;
 
   // ---------------------------------------------------------------------------
   // Saatler ve resetler
   // ---------------------------------------------------------------------------
-  logic sys_rst_n;      // dis reset, senkron birakilmis
-  logic core_rst_n;     // dis reset + CTRL.SOFT_RESET
+  // HARD ve SOFT reset ayri tasinir; AND'lenip tek bir asenkron reset neti
+  // olarak dagitilmazlar (gerekce: rtl/rst_sync.sv baslıgı).
+  logic sys_rst_n;      // clk alani, hard reset, senkron birakilmis
+  logic soft_clr;       // clk alani, SENKRON yazilim clear'i
+  logic sd_rst_n;       // sd_clk_core alani, hard reset, senkron birakilmis
+  logic sd_soft_clr;    // sd_clk_core alani, SENKRON yazilim clear'i
   logic [CFG_CLK_W-1:0] sd_clk_ratio; // bolme orani -> PHY'daki clk_controller
   logic sd_clk_en;      // DQCE enable
   logic sd_clk_core;    // PHY'da gate'lenmis SD saati -> L1, L2, L3, rampa
@@ -184,12 +201,9 @@ module ultra_sd_top #(
   logic                     xfer_launch;    // transfer basladi, tek cevrim
 
   // ---------------------------------------------------------------------------
-  // L2: komut motoru + baslatma merdiveni (tek modul)
-  //
-  // Eskiden burada bir arbitrasyon katmani vardi: init ile blok isteklerini
-  // birlestiren 42 bitlik 2:1 mux ve hazir/yanit yonlendirmesi. Ikisi tek
-  // modul olunca o katman tamamen kalkti -- ve birlikte init_req_*, arb_req_*,
-  // cmd_rsp_data ile rca geri besleme dongusu de.
+  // L2: separate command transport and initialization policy, connected by
+  // ultra_sd_protocol. The wrapper selects init/block requests and routes
+  // completion to the accepted requester; all modules use sd_clk_core.
   // ---------------------------------------------------------------------------
   logic                   init_busy;
   logic                   init_done;
@@ -197,7 +211,6 @@ module ultra_sd_top #(
   err_e                   init_err_code;
   logic [15:0]            rca;
   logic [31:0]            card_blk;
-  logic                   block_addr;
   speed_e                 speed;
   logic                   bus_4bit;
   logic [CFG_CLK_W-1:0]   init_clk_div;
@@ -308,7 +321,13 @@ module ultra_sd_top #(
     .bus_4bit_i       (bus_4bit),
 
     .rst_n_o          (sys_rst_n),
-    .core_rst_n_o     (core_rst_n),
+    .soft_clr_o       (soft_clr),
+    .sd_rst_n_o       (sd_rst_n),
+    .sd_soft_clr_o    (sd_soft_clr),
+    // Baska saat alani yok: clk ve sd_clk_core'un onaylari sysctl'in kendi
+    // icinde. axis_clk ayri bir port olunca o alanin rst_sync onayi buraya
+    // baglanacak.
+    .soft_ack_ext_i   (1'b1),
 
     .card_present_o   (card_present),
     .card_change_o    (card_change),
@@ -350,7 +369,7 @@ module ultra_sd_top #(
   // L4 -- AXI4-Lite + register dosyasi + AXI4-Stream adaptorleri
   //
   // FIFO'larin SD tarafi sd_clk_core'dur: L3 o saatte kosar (doc/cdc.md 1, 2).
-  // Register dosyasi sys_rst_n ile kurulur, core_rst_n ile DEGIL: soft reset
+  // Register dosyasi sys_rst_n ile kurulur ve soft clear ALMAZ: soft reset
   // yazilimin konfigurasyonunu silmemeli.
   // ===========================================================================
   ultra_sd_axi_top #(
@@ -362,7 +381,9 @@ module ultra_sd_top #(
     .clk                  (clk),
     .rst_n                (sys_rst_n),
     .sd_clk               (sd_clk_core),
-    .sd_rst_n             (core_rst_n),
+    .sd_rst_n             (sd_rst_n),
+    .sd_soft_clr          (sd_soft_clr),
+    .axi_soft_clr         (soft_clr),
 
     .s_axil_awaddr        (s_axil_awaddr),
     .s_axil_awvalid       (s_axil_awvalid),
@@ -434,53 +455,6 @@ module ultra_sd_top #(
   );
 
   // ===========================================================================
-  // Transfer argumanlarinin on-denetimi -- BILEREK clk alaninda, L3'te degil.
-  //
-  // Denetlenen uc sey: lba + blocks kartin kapasitesini asiyor mu (R-FUNC-4),
-  // blocks sifir mi, blocks birden buyuk mu (cok bloklu mu). Ucu de eskiden
-  // L3'un icinde, go_rise kolunun ortasinda kombinasyonel duruyordu ve
-  // asagidaki koniyi uretiyordu:
-  //
-  //   u_axi/u_reg/BLOCKS -> 33 bit toplama -> card_blk ile karsilastirma ->
-  //   start_err -> start_bad -> fail_o -> u_block/step_q, post_q ve
-  //   u_sysctl/err_q, phase_q'nun CE'leri
-  //
-  // 15-16 mantik seviyesi. clk'in Fmax'ini asagi ceken yol buydu ve yukun
-  // bindigi taraf da burasi: BLOCKS ile LBA zaten bu alanda, u_reg'de
-  // kilitleniyor. O yuzden boru hatti da burada -- L3'e tasinirsa flop
-  // SD saati alanina duser ve yuk sadece yer degistirir.
-  //
-  // Iki asama, cunku toplama ile karsilastirma iki ayri tasima zinciri:
-  //   asama 1: lba + blocks
-  //   asama 2: card_blk ile karsilastir
-  // L3'e giden uc bit, orada tek mux ile kullanilir.
-  //
-  // Gecikme guvenli: argumanlar go'ya gore quasi-statiktir. LBA ve BLOCKS
-  // CTRL.START yazisiyla ayni cevrimde kilitlenir, card_blk merdivenden beri
-  // sabittir; xfer_go ise en erken bir clk sonra kalkar ve L3'te iki flopluk
-  // senkronizasyon + kenar yakalamadan gecer, yani go_rise bu iki asamadan
-  // sonradir.
-  // ===========================================================================
-  logic [32:0] last_blk_q;
-  logic        start_range_bad;
-  logic        start_blocks_zero;
-  logic        start_multi;
-
-  always_ff @(posedge clk or negedge core_rst_n) begin
-    if (!core_rst_n) begin
-      last_blk_q        <= '0;
-      start_range_bad   <= 1'b0;
-      start_blocks_zero <= 1'b1;
-      start_multi       <= 1'b0;
-    end else begin
-      last_blk_q        <= {1'b0, lba} + {1'b0, 32'(blocks)};
-      start_range_bad   <= (last_blk_q > {1'b0, card_blk});
-      start_blocks_zero <= (blocks == '0);
-      start_multi       <= (blocks > BLOCKS_W'(1));
-    end
-  end
-
-  // ===========================================================================
   // L3 -- blok katmani. sd_clk_core alaninda, yani L2 ve L1 ile AYNI saat.
   // ===========================================================================
   ultra_sd_block #(
@@ -490,7 +464,8 @@ module ultra_sd_top #(
     .PROG_TIMEOUT_CLK (PROG_TIMEOUT_CLK)
   ) u_block (
     .clk               (sd_clk_core),
-    .rst_n             (core_rst_n),
+    .rst_n             (sd_rst_n),
+    .soft_clr          (sd_soft_clr),
 
     .go_i              (xfer_go),
     .card_present_i    (card_present),
@@ -498,10 +473,7 @@ module ultra_sd_top #(
     .lba_i             (lba),
     .blocks_i          (blocks),
     .dir_i             (xfer_dir),
-    .start_range_bad_i   (start_range_bad),
-    .start_blocks_zero_i (start_blocks_zero),
-    .start_multi_i       (start_multi),
-    .block_addr_i      (block_addr),
+    .card_blk_i        (card_blk),
     .rca_i             (rca),
 
     .accept_o          (blk_accept),
@@ -556,7 +528,7 @@ module ultra_sd_top #(
   // PHY'a tamamdir. Merdiven rampa bittigi anda (ramp_done, seviye) baslar ve
   // hat uzerindeki onceligi modulun kendi icinde cozulur.
   // ===========================================================================
-  ultra_sd_cmd #(
+  ultra_sd_protocol #(
     .CMD_RETRIES        (CRC_RETRIES),
     .NCC_GAP_CLK        (NCC_GAP_CLK),
     .CLK_DIV_INIT       (CLK_DIV_INIT),
@@ -565,7 +537,8 @@ module ultra_sd_top #(
     .ACMD41_TIMEOUT_CLK (SD_HZ_INIT)
   ) u_cmd (
     .cmd_clk         (sd_clk_core),
-    .rst_n           (core_rst_n),
+    .rst_n           (sd_rst_n),
+    .soft_clr         (sd_soft_clr),
 
     // L3 istek portu
     .req_valid_i     (blk_req_valid),
@@ -576,8 +549,7 @@ module ultra_sd_top #(
     .req_ready_o     (cmd_req_ready),
 
     .rsp_valid_o     (cmd_rsp_valid),
-    // Yanit yuku yalnizca merdivenin isine yariyordu, o da artik modulun
-    // icinde; burada gozlem icin acikta.
+    // The protocol wrapper routes the response payload to u_init.
     .rsp_data_o      (),
     .rsp_crc_ok_o    (),
     .rsp_err_o       (cmd_rsp_err),
@@ -613,7 +585,6 @@ module ultra_sd_top #(
 
     .rca_o           (rca),
     .card_blk_o      (card_blk),
-    .block_addr_o    (block_addr),
     .speed_o         (speed),
     .bus_4bit_o      (bus_4bit),
     .clk_div_o       (init_clk_div),
@@ -634,7 +605,8 @@ module ultra_sd_top #(
   // ===========================================================================
   ultra_sd_line u_line (
     .line_clk        (sd_clk_core),
-    .rst_n           (core_rst_n),
+    .rst_n           (sd_rst_n),
+    .soft_clr        (sd_soft_clr),
 
     .bus_wide_i      (bus_wide),
 
@@ -673,7 +645,11 @@ module ultra_sd_top #(
   // ===========================================================================
   ultra_sd_phy_gowin u_phy (
     .clk            (clk),
-    .rst_n          (core_rst_n),
+    // PHY clk alaninda: hard reset sys_rst_n. Icindeki clk_controller
+    // (bolucu) bu yuzden soft reset'ten ETKILENMEZ -- senkron clear'in
+    // uygulanabilmesi icin SD saatinin kosmaya devam etmesi gerekiyor.
+    .rst_n          (sys_rst_n),
+    .soft_clr       (soft_clr),
 
     .cfg_phy_i      (cfg_phy),
 

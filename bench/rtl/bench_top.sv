@@ -82,9 +82,23 @@ module bench_top #(
   // SUITE_CTRL / SUITE_SOAK sizing. SOAK_ITERS is what makes R-MEAS-5's
   // half-hour: at the tier divisor one pair of 8 blocks is about a millisecond,
   // so 64 is a smoke test and six figures is the soak.
+  //
+  // Overridable by macro for the same reason SUITE is: gw_sh has no -define,
+  // so bench_defines.sv is the only place a build can say what it wants, and
+  // the soak bitstream needs a different number from the smoke-test one
+  // without either of them editing this file. bench/build_soak.tcl supplies
+  // its own defines file.
   parameter int CTRL_BLOCKS = 8,
+`ifdef BENCH_SOAK_ITERS
+  parameter int SOAK_ITERS  = `BENCH_SOAK_ITERS,
+`else
   parameter int SOAK_ITERS  = 64,
+`endif
+`ifdef BENCH_SOAK_BLOCKS
+  parameter int SOAK_BLOCKS = `BENCH_SOAK_BLOCKS
+`else
   parameter int SOAK_BLOCKS = 8
+`endif
 ) (
   input  logic       clk27,      // 27 MHz board oscillator
 

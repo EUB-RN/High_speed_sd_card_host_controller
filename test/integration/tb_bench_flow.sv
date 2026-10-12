@@ -306,7 +306,7 @@ module tb_bench_flow;
   task automatic diagnose_stall;
     if (u_bench.sst_q == 0) begin
       $display("FAIL: card never reached STATUS.CARD_READY; init state %0d, err %0d, last CMD%0d",
-               u_sd.u_cmd.init_mode_q, u_sd.init_err_code, u_card.last_cmd_o);
+               u_sd.u_cmd.u_init.init_mode_q, u_sd.init_err_code, u_card.last_cmd_o);
     end else begin
       $display("FAIL: benchmark stalled in sequencer state %0d, transfer state %0d",
                u_bench.sst_q, u_bench.xst_q);

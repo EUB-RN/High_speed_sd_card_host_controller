@@ -12,6 +12,7 @@ module ultra_sd_line
 
   input  logic                     line_clk,
   input  logic                     rst_n,
+  input  logic                     soft_clr,   // SENKRON yazilim clear'i
 
   input  logic                     bus_wide_i,  // 1 = 4-bit, 0 = 1-bit
 
@@ -260,7 +261,6 @@ module ultra_sd_line
         crc_q[i] <= CRC16_INIT;
       end
     end else begin
-
       start_sync_q <= {start_sync_q[0], start_i};
       dir_sync_q   <= dir_i;
       wide_sync_q  <= {wide_sync_q[0], bus_wide_i};
@@ -413,6 +413,39 @@ module ultra_sd_line
 
         default: cell_q <= CELL_IDLE;
       endcase
+
+      if (soft_clr) begin
+        cell_q       <= CELL_IDLE;
+        seg_q        <= SEG_DATA;
+        dir_q        <= 1'b0;
+        cnt_q        <= '0;
+        rx_valid_q   <= 1'b0;
+        rx_done_q    <= 1'b0;
+        rx_crc_ok_q  <= 1'b0;
+        tx_done_q       <= 1'b0;
+        tx_status_q     <= '0;
+        tx_status_ok_q  <= 1'b0;
+        tx_status_tmo_q <= 1'b0;
+        card_busy_q     <= 1'b0;
+        for (int i = 0; i < SD_DATA_LANES; i++) begin
+          crc_q[i] <= CRC16_INIT;
+        end
+
+        // Preserve registers not reset by software clear.
+        clr_q <= clr_q;
+        clr_sync_q <= clr_sync_q;
+        dir_sync_q <= dir_sync_q;
+        rx_data_q <= rx_data_q;
+        rx_sh_q <= rx_sh_q;
+        start_sync_q <= start_sync_q;
+        stat_busy_q <= stat_busy_q;
+        stat_data_q <= stat_data_q;
+        stat_sh_q <= stat_sh_q;
+        wide_q <= wide_q;
+        wide_sync_q <= wide_sync_q;
+        word_q <= word_q;
+        xfer_words_q <= xfer_words_q;
+      end
     end
   end
 
@@ -475,6 +508,14 @@ module ultra_sd_line
       // kaydir, baska her yerde dur. (tx_take_o start bitinde de yukselir.)
       if (tx_take_o)                      tx_sh_q <= word_swizzle(tx_data_i);
       else if (tx_drive && in_data)       tx_sh_q <= tx_sh_shift;
+
+      if (soft_clr) begin
+        dat_oe_q  <= '0;
+
+        // Preserve registers not reset by software clear.
+        dat_out_q <= dat_out_q;
+        tx_sh_q <= tx_sh_q;
+      end
     end
   end
 

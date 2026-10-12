@@ -119,8 +119,8 @@ set_false_path -from [get_ports {sd_cd}]
 ## false_path orada zaten dogru kisittir. Geriye kalan ~30 sd_clk_core -> sys_clk
 ## yolu BILEREK bastirilmadi: ayni artefakt olduklari teshis edildi, ama
 ## false_path ile susturmak gercek kapsami da kaybettirir. Bkz. doc/cdc.md.
-set_false_path -to [get_pins {*rptr_gray_wr_s1*/D}]
-set_false_path -to [get_pins {*wptr_gray_rd_s1*/D}]
+set_false_path -to [get_pins {*rptr_gray_s1*/D}]
+set_false_path -to [get_pins {*wptr_gray_s1*/D}]
 
 
 ## The UART and the LEDs are the report, not the measurement: one drives a 115200

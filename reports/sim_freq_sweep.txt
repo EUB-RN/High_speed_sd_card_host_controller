@@ -1,0 +1,8 @@
+tb_freq_sweep -- divisor characterisation, behavioural card
+sys_clk_hz = 10000000
+blocks     = 2
+div read_sysclk write_sysclk stat_data_rd stat_data_wr
+1 4660 6361 2048 2048
+2 4660 6361 2048 2048
+4 9310 12747 2048 2048
+8 18616 25513 2048 2048

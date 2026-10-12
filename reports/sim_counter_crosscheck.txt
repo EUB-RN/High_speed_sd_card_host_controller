@@ -1,0 +1,5 @@
+tb_counter_crosscheck -- Table 5-2 counters vs independent counts
+blocks_per_transfer = 4
+crc_injections      = 1
+cmd_injections      = 1
+checks              = 104

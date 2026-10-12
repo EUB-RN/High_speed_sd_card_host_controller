@@ -35,3 +35,8 @@ tmp/
 
 # Gowin build loglari
 *.log
+
+# SymbiYosys task working directories (sby -f recreates them)
+test/formal/*_bmc/
+test/formal/*_prove/
+test/formal/async_fifo/

@@ -109,6 +109,36 @@ The whole sequence takes about a minute: init, a sampling-phase scan, one
 preconditioning write (~5 s), five write/read pairs (~8 s each), then the
 characterisation sweep.
 
+### The three bitstreams
+
+`gw_sh` takes no arguments and has no `-define`, so "which suite" is decided by
+which defines file is added first -- and that means one build script per
+bitstream rather than one script with a flag.
+
+| script | output | suite | what it is for |
+|---|---|---|---|
+| `build.tcl` | `impl/pnr/project.fs` | 0, `SUITE_TIER` | the tier measurement: phase scan, five 64 MB write/read pairs, single-block latencies, characterisation sweep |
+| `build_soak.tcl` | `impl/pnr/soak.fs` | 4, `SUITE_SOAK` | R-MEAS-5: one verified 8-block pair per iteration, five checkpoints. The iteration count is `BENCH_SOAK_ITERS` in `rtl/bench_defines_soak.sv`; 185 000 is half an hour on the reference card, measured |
+| `build_deg.tcl` | `impl/pnr/deg.fs` | 5, `SUITE_DEG` | R-DEG-7: forces `CFG_PHY.FORCE_1BIT` and `FORCE_DS`, re-runs the init ladder, checks `STATUS` reports the mode actually negotiated, then does verified work in it |
+
+**Check the timing report before programming any of them.**
+
+```bash
+python3 ../syn/pnr_timing.py impl/pnr/project_tr_content.html
+```
+
+`gw_sh` exits 0 whether or not the design closed, and this harness has long
+combinational chains -- the report engine's decimal conversion and the beat
+comparator -- that sit close to the system clock. A bitstream with setup
+violations programs perfectly and then misbehaves in ways that look exactly
+like core bugs: one soak build came out with 1068 violated endpoints and
+produced no UART output at all, and another reported read-back mismatches that
+were not real. The script exits non-zero so it can gate the flow.
+
+Each suite also runs in simulation against the behavioural card first --
+`make -C test bench_flow bench_timing bench_soak bench_deg` -- which is what
+makes a hardware run not the first execution of a sequence.
+
 ### First run: make it small
 
 `TEST_BLOCKS` is a parameter on `bench_top`. For the first bring-up run set it to

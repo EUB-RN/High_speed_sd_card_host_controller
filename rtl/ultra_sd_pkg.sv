@@ -2,27 +2,42 @@
 
 package ultra_sd_pkg;
 
+  // ---------------------------------------------------------------------------
+  // Table 5-1, byte offsets in the 256-byte window. ONE REGISTER PER ROW.
+  //
+  // Section 5 is normative and exact: "this port list, this register map,
+  // these bit positions ... if your names, widths, directions or offsets
+  // differ, your design cannot be measured". The benchmark harness is written
+  // against these offsets, so they are not a style choice.
+  //
+  // This used to be a compacted ten-word map: CTRL, STATUS, ERR, IRQ_EN and
+  // IRQ_STAT shared one word at 0x04, BLOCKS and XFER shared 0x0C, CFG_CLK and
+  // CFG_PHY shared 0x10, and everything above that was four to twenty bytes
+  // low. It saved nine address decodes and cost the whole specification: on
+  // the client's harness a write to CTRL.START would land on STATUS and a
+  // write to BLOCKS would land on LBA.
+  //
+  // The packing also had a real functional edge of its own, which is how it
+  // was found: CFG_CLK and CFG_PHY in one word meant that software setting
+  // FORCE_1BIT with a plain 32-bit write zeroed the clock divisor, and divisor
+  // zero is not a clock. One register per row makes that unrepresentable.
+  // ---------------------------------------------------------------------------
   localparam logic [7:0] REG_VERSION     = 8'h00;
-  localparam logic [7:0] REG_CTRL_STATUS = 8'h04;
-
-  localparam logic [7:0] REG_LBA         = 8'h08;
-  localparam logic [7:0] REG_XFER_CFG    = 8'h0C;
-  localparam logic [7:0] REG_HW_CFG      = 8'h10;
-  localparam logic [7:0] REG_CARD_BLK    = 8'h14;
-  localparam logic [7:0] REG_STAT_DATA   = 8'h18;
-  localparam logic [7:0] REG_STAT_GAP    = 8'h1C;
-  localparam logic [7:0] REG_STAT_BUSY   = 8'h20;
-  localparam logic [7:0] REG_STAT_RETRY  = 8'h24;
-
-  localparam logic [7:0] REG_CTRL        = REG_CTRL_STATUS;
-  localparam logic [7:0] REG_STATUS      = REG_CTRL_STATUS;
-  localparam logic [7:0] REG_ERR         = REG_CTRL_STATUS;
-  localparam logic [7:0] REG_BLOCKS      = REG_XFER_CFG;
-  localparam logic [7:0] REG_XFER        = REG_XFER_CFG;
-  localparam logic [7:0] REG_CFG_CLK     = REG_HW_CFG;
-  localparam logic [7:0] REG_CFG_PHY     = REG_HW_CFG;
-  localparam logic [7:0] REG_IRQ_EN      = REG_CTRL_STATUS;
-  localparam logic [7:0] REG_IRQ_STAT    = REG_CTRL_STATUS;
+  localparam logic [7:0] REG_CTRL        = 8'h04;
+  localparam logic [7:0] REG_STATUS      = 8'h08;
+  localparam logic [7:0] REG_ERR         = 8'h0C;
+  localparam logic [7:0] REG_LBA         = 8'h10;
+  localparam logic [7:0] REG_BLOCKS      = 8'h14;
+  localparam logic [7:0] REG_XFER        = 8'h18;
+  localparam logic [7:0] REG_CFG_CLK     = 8'h1C;
+  localparam logic [7:0] REG_CFG_PHY     = 8'h20;
+  localparam logic [7:0] REG_CARD_BLK    = 8'h24;
+  localparam logic [7:0] REG_STAT_DATA   = 8'h28;
+  localparam logic [7:0] REG_STAT_GAP    = 8'h2C;
+  localparam logic [7:0] REG_STAT_BUSY   = 8'h30;
+  localparam logic [7:0] REG_STAT_RETRY  = 8'h34;
+  localparam logic [7:0] REG_IRQ_EN      = 8'h38;
+  localparam logic [7:0] REG_IRQ_STAT    = 8'h3C;
 
   localparam logic [15:0] VERSION_MAGIC = 16'h5344;
 
@@ -133,14 +148,18 @@ package ultra_sd_pkg;
   localparam int LBA_W                = 32;
   localparam int BLOCKS_W             = 24;
 
+  // Every field is now at the bottom of its OWN register (Table 5-1), so these
+  // are all zero except XFER.DIR, which Table 5-1 puts at bit 0 of 0x18. They
+  // are kept as named constants rather than deleted because the testbenches
+  // and the cocotb register model read them, and because a future field added
+  // beside one of these should have somewhere to say where it went.
   localparam int STATUS_LSB           = 0;
-  localparam int ERR_LSB              = 8;
-  localparam int IRQ_STAT_LSB         = 16;
-  localparam int IRQ_EN_LSB           = 24;
-  localparam int IRQ_PIN_BIT          = 31;
-  localparam int XFER_DIR_BIT         = 31;
+  localparam int ERR_LSB              = 0;
+  localparam int IRQ_STAT_LSB         = 0;
+  localparam int IRQ_EN_LSB           = 0;
+  localparam int XFER_DIR_BIT         = 0;
   localparam int CFG_CLK_LSB          = 0;
-  localparam int CFG_PHY_LSB          = 8;
+  localparam int CFG_PHY_LSB          = 0;
 
   localparam int BLOCK_BYTES    = 512;
   localparam int SD_DATA_LANES  = 4;

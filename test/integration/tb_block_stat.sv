@@ -2,8 +2,10 @@
 
 module tb_block_stat;
   import ultra_sd_pkg::*;
+  // Yazilim clear'i bu testin konusu degil: sabit 0.
+  logic soft_clr = 1'b0;
   logic clk=0,rst_n,go_i,card_present_i,card_ready_i,dir_i;
-  logic [31:0] lba_i,card_blk_i; logic [23:0] blocks_i; logic block_addr_i;
+  logic [31:0] lba_i,card_blk_i; logic [23:0] blocks_i;
   logic [15:0] rca_i; logic accept_o,busy_o,fin_o,fail_o;
   // Gap ve CRC-retry sayaclari ultra_sd_block'un ICINDE (olaylari onun FSM
   // kollari); bu test onlari dogrudan okuyor. STAT_DATA / STAT_BUSY burada yok
@@ -34,7 +36,7 @@ module tb_block_stat;
   ultra_sd_block #(.NAC_TIMEOUT_CLK(12),.PROG_TIMEOUT_CLK(12)) u_block(.*);
   // Table 5-1 / Table 5-2 artik system_controller'in FSM'inin icinde. Bu test
   // faz FSM'ini sinamiyor (onu tb_system_controller yapiyor): kart takili ve
-  // debounce penceresi kisa, boylece core_rst_n birakilir ve durum/sayac
+  // debounce penceresi kisa, boylece reset birakilir ve durum/sayac
   // bolumu kosar. fin / fail ayri port degil -- xfer_done_i / xfer_err_i.
   system_controller #(.CD_DEBOUNCE_CYC(3), .RAMP_CLOCKS(4), .INIT_CLK_DIV(10)) u_stat (
     .clk              (clk),
@@ -53,7 +55,10 @@ module tb_block_stat;
     .bus_4bit_i       (1'b1),
 
     .rst_n_o          (),
-    .core_rst_n_o     (),
+    .soft_clr_o       (),
+    .sd_rst_n_o       (),
+    .sd_soft_clr_o    (),
+    .soft_ack_ext_i   (1'b1),
     .card_present_o   (),
     .card_change_o    (),
     .sd_clk_ratio_o   (),
@@ -105,7 +110,7 @@ module tb_block_stat;
   initial begin
     checks=0;failures=0;card_present_i=1;card_ready_i=1;lba_i=32'h20;blocks_i=1;dir_i=0;
     speed_const=SPEED_HS;init_err_const=ERR_OK;
-    card_blk_i=32'h10000;block_addr_i=1;rca_i=16'h1234;rsp_err_i=0;cmd_err_i=ERR_OK;
+    card_blk_i=32'h10000;rca_i=16'h1234;rsp_err_i=0;cmd_err_i=ERR_OK;
     tx_take_i=0;tx_done_i=0;tx_status_ok_i=1;tx_status_tmo_i=0;rx_data_i=0;rx_busy_i=0;
     rx_crc_ok_i=1;dat_active_i=0;card_busy_i=0;rd_room_ok_i=1;wr_data_i=0;wr_last_i=0;
     wr_block_ready_i=1;stat_clear_i=0;

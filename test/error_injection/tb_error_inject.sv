@@ -83,7 +83,15 @@ module tb_error_inject;
     .DATA_W         (32),
     .RD_FIFO_BLOCKS (4),
     .WR_FIFO_BLOCKS (2),
-    .CRC_RETRIES    (3)
+    .CRC_RETRIES    (3),
+    // The derived programming timeout is half a second of SD clocks, which at
+    // this testbench's clock is a second of simulated time -- so dat_stuck_busy
+    // could never reach it and the scenario could not be written. Shortened to
+    // something a simulation can wait for; the ratio to the card model's
+    // WRITE_BUSY_CYCLES (8) is still three orders of magnitude, so a healthy
+    // card is nowhere near it.
+    .PROG_TIMEOUT_CLK_P (20_000),
+    .NAC_TIMEOUT_CLK_P  (20_000)
   ) u_sd (
     .clk, .rst_n,
     .s_axil_awaddr (awaddr), .s_axil_awvalid (awvalid), .s_axil_awready (awready),
@@ -134,20 +142,72 @@ module tb_error_inject;
   // tready tied high and the write source is a continuous assign off wr_left --
   // so polling STATUS in one loop is the whole of it. (Icarus also aborts on
   // fork/join_any inside an automatic task, which is how that was discovered.)
+  // WHERE A WEDGED SCENARIO IS WEDGED. +eidbg.
+  //
+  // Every scenario here is a recovery path, and when one of them stops making
+  // progress the only thing the poll loop can say is "no DONE in 400000
+  // reads". That is not a diagnosis. Printing the block FSM's step next to the
+  // line cell and the card's own DAT state, on change, says which of the three
+  // is waiting for which -- the same probe that placed tb_line_card's bugs.
+  int ei_blk = -1, ei_cell = -1, ei_cdat = -1, ei_rdy = -1;
+  always @(posedge clk) begin
+    if (rst_n && $test$plusargs("eidbg") &&
+        ((int'(u_sd.u_block.step_q) != ei_blk) ||
+         (int'(u_sd.u_line.cell_q)  != ei_cell) ||
+         (int'(u_sd.u_block.wr_block_ready_i) != ei_rdy) ||
+         (int'(u_card.dat_tx_state_q) != ei_cdat))) begin
+      $display("      [%0t] blk=%0d cell=%0d card_dat=%0d post=%0d retry=%0d busy=%b wr_rdy=%b lvl=%0d wp=%0d wpub=%0d wprd=%0d rp=%0d full=%b wrstn=%b wen=%b tv=%b tr=%b",
+               $time, u_sd.u_block.step_q, u_sd.u_line.cell_q,
+               u_card.dat_tx_state_q, u_sd.u_block.post_q,
+               u_sd.u_block.retry_q, u_sd.u_line.card_busy_o,
+               u_sd.u_block.wr_block_ready_i,
+               u_sd.u_axi.u_axis_rx.sd_rd_level,
+               u_sd.u_axi.u_axis_rx.u_fifo.wptr_bin,
+               u_sd.u_axi.u_axis_rx.u_fifo.wptr_pub,
+               u_sd.u_axi.u_axis_rx.u_fifo.wptr_bin_rd_q,
+               u_sd.u_axi.u_axis_rx.u_fifo.rptr_bin,
+               u_sd.u_axi.u_axis_rx.u_fifo.wr_full,
+               u_sd.u_axi.u_axis_rx.u_fifo.wr_rst_n,
+               u_sd.u_axi.u_axis_rx.u_fifo.wr_en,
+               wr_tvalid, wr_tready);
+      ei_blk  = int'(u_sd.u_block.step_q);
+      ei_cell = int'(u_sd.u_line.cell_q);
+      ei_cdat = int'(u_card.dat_tx_state_q);
+      ei_rdy  = int'(u_sd.u_block.wr_block_ready_i);
+    end
+  end
+
   task automatic xfer(input logic dir, input int lba, input int blocks,
                       output logic [7:0] err);
     logic [31:0] v;
     int p;
     // Arm the write source as part of the transfer, so a scenario cannot forget
     // to and then read the silence as success.
+    //
+    // DRIVE wr_load ON THE NEGEDGE. It used to be set, then `@(posedge clk)`,
+    // then cleared -- and clearing it immediately after the edge races the
+    // always_ff that is supposed to sample it. Icarus resolved that race the
+    // wrong way every time, so wr_left was never loaded, wr_tvalid never rose,
+    // and the write FIFO stayed empty: the block layer then sat in S_WR_ARM
+    // waiting for a block that no one was sending, which is the hang the
+    // crc_status_reject and dat_stuck_busy scenarios were recorded as
+    // "OPEN, cause unknown". Nothing was wrong with the core -- the scenarios
+    // had never managed to start a write at all. (crc16_read_error was
+    // unaffected because a read passes wr_req = 0.)
+    @(negedge clk);
     wr_req  = dir ? blocks * (BLOCK_BYTES/4) : 0;
     wr_load = 1'b1;
-    @(posedge clk);
+    @(negedge clk);
     wr_load = 1'b0;
 
     axil_write(REG_CTRL, 32'(1 << CTRL_STAT_CLEAR_BIT));
     axil_write(REG_LBA, 32'(lba));
-    axil_write(REG_XFER_CFG, {dir, 7'h00, 24'(blocks)});
+    // BLOCKS and XFER are separate registers (Table 5-1, 0x14 and 0x18). They
+    // used to share one word, so one write set both; now it takes two, and
+    // both have to land before CTRL.START because that is the write that
+    // latches them (R-IF-3).
+    axil_write(REG_BLOCKS, 32'(blocks));
+    axil_write(REG_XFER, 32'(dir) << XFER_DIR_BIT);
     axil_write(REG_CTRL, 32'(1 << CTRL_START_BIT));
 
     // WAIT FOR DONE TO CLEAR BEFORE WAITING FOR IT TO SET.

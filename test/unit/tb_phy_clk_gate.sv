@@ -101,6 +101,8 @@ module tb_phy_clk_gate;
   ultra_sd_phy_gowin dut (
     .clk            (clk),
     .rst_n          (rst_n),
+    // Bu test gate'lemeyi olcuyor, yazilim clear'ini degil.
+    .soft_clr       (1'b0),
     .cfg_phy_i      (CFG_PHY_W'(0)),
     .clk_div_i      (div),
     .sd_clk_en_i    (sd_en),

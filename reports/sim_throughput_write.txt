@@ -1,0 +1,15 @@
+tb_throughput_write -- behavioural card, programming time known
+blocks               = 8
+bus_width            = 4
+sd_clk_total         = 9035
+payload              = 8192
+crc16                = 128
+stat_data_core       = 8192
+stat_gap_core        = 266
+stat_busy_core       = 64
+card_busy_on_bus     = 64
+bus_eff_permille     = 906
+host_write_eff_pm    = 913
+first_gap            = 351
+inter_block_each     = 31
+nonpayload_perblock  = 105

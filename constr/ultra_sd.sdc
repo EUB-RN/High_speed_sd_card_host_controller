@@ -22,7 +22,54 @@
 ## ---- system clock ----------------------------------------------------------
 ## 99 MHz = 27 * 33 / 9, the highest SD-legal rate reachable from the board's
 ## 27 MHz oscillator. Period 10.101 ns.
-create_clock -name sys_clk -period 10.101 -waveform {0 5.050} [get_ports {clk}]
+##
+## 3. DEFINE BOTH CLOCKS AT THE SAME POINT ON THE CLOCK PATH, OR STA LIES BY
+##    SEVERAL NANOSECONDS IN BOTH DIRECTIONS.
+##
+## This used to read [get_ports {clk}]. That is the textbook place for a base
+## clock and it is wrong here, because of how this tool treats a generated
+## clock: it starts the generated clock AT ITS DEFINITION POINT with zero
+## latency and does not propagate the source's insertion delay to it. The
+## evidence is in the path dumps -- for a sys_clk launch the clock path reads
+##     tCL 0.000 -> clk_ibuf/I ; tINS 4.230 -> clk_ibuf/O ; tNET 2.271 -> flop
+## (6.501 ns of insertion) while the sd_clk_core side of the same report reads
+##     tCL 0.000 -> u_phy/u_dqce_sd/CLKOUT ; tNET 2.270 -> flop
+## (2.270 ns). Both clocks physically come down the same global network from
+## the same pad, so that 4.231 ns is not skew -- it is an unmodelled constant.
+##
+## What it cost: 87 endpoints reported as hold violations on sd_clk_core ->
+## sys_clk, worst -2.268 ns, every one of them with the identical -3.128 skew
+## that gives the artefact away. Those are the cdc.md rows 10-12 crossings, the
+## ones that document themselves as divided-clock synchronous paths. They were
+## never unsafe; the launch clock was simply modelled 4.2 ns early.
+##
+## Three fixes were measured before this one was kept:
+##   a) set_clock_latency -source <n> on sd_clk_core. The command IS accepted
+##      by this version, contrary to the note further down that said it does
+##      not exist. With a single value it cannot work: the right number is the
+##      ibuf delay, which is 4.230 ns in the slow model and 1.392 in the fast
+##      one, so one value fixes setup and breaks hold or the other way round
+##      (measured: 4.231 gave 4 setup / 68 hold; 6.501 gave 9 / 345).
+##   b) the same with -early 1.392 / -late 4.230. Hold went to zero, and the
+##      SD pad outputs went to -2.640: a pad check launches and captures on
+##      the SAME clock, so the tool took the late value on the launch side and
+##      the early one on the capture side and charged the path 2.84 ns that
+##      does not exist.
+##   c) sourcing the generated clock at clk_ibuf/O while sys_clk stayed on the
+##      port. Rejected: -master_clock then cannot resolve (TA2004), and
+##      without -master_clock the tool will not create the clock at all.
+##
+## Defining BOTH at clk_ibuf/O removes the asymmetry instead of compensating
+## for it, so it needs no tuned constant and cannot drift when the device,
+## the corner or the placement changes. Result: 0 setup and 0 hold violated
+## endpoints, worst setup +0.274 ns, worst hold +0.225 ns.
+##
+## What is given up is timing on the clk port itself -- the report now says
+## "No timing paths to get frequency of clk!". Nothing is lost by that: the
+## only I/O timing in this design is on the SD pads and those are referenced
+## to sd_clk_core, and R-CLK-6 asks for the system clock to be constrained,
+## which it is -- one buffer downstream of the pin it enters on.
+create_clock -name sys_clk -period 10.101 -waveform {0 5.050} [get_pins {clk_ibuf/O}]
 
 ## ---- the gated clock the core's logic actually runs on ---------------------
 ## Leave this out and Gowin reports
@@ -36,7 +83,10 @@ create_clock -name sys_clk -period 10.101 -waveform {0 5.050} [get_ports {clk}]
 ## them for the pad. The select bit was tied off and both enables were the same
 ## wire, so the second copy was dead logic that cost a global clock network and
 ## made every L1 <-> L3 path an inter-clock path for STA. One clock now.
-create_generated_clock -name sd_clk_core -source [get_ports {clk}] -master_clock sys_clk -divide_by 2 [get_pins {u_phy/u_dqce_sd/CLKOUT}]
+## -source is clk_ibuf/O and not the clk port, for the reason written out at
+## length above the sys_clk definition: both clocks have to start at the same
+## point on the same physical network or the tool invents 4.2 ns of skew.
+create_generated_clock -name sd_clk_core -source [get_pins {clk_ibuf/O}] -master_clock sys_clk -divide_by 2 [get_pins {u_phy/u_dqce_sd/CLKOUT}]
 
 ## ---- the clock on the SD pad ----------------------------------------------
 ## There is no separate pad clock any more, and that is the point: the DQCE
@@ -152,7 +202,11 @@ create_generated_clock -name sd_clk_core -source [get_ports {clk}] -master_clock
 ##    analiz etmeyi birakiyor -- asagida 'ped cikis enable'i' basliginda anlatilan
 ##    tarihi felaketin ta kendisi. ASLA.
 ##
-## 3) set_clock_latency: bu surumde yok (IDE agacinda tek referans bile yok).
+## 3) set_clock_latency: VAR, bu not yanlisti. Komut kabul ediliyor ve etki
+##    ediyor; olculen sonuclari sys_clk tanimininin ustundeki (a) ve (b)
+##    maddelerinde. Ped kredisinin yerine GECMIYOR: ped checki ayni saatle
+##    launch ve capture ettigi icin tek degerli latency sadelesir, -early /
+##    -late ise kendi icinde 2.84 ns'lik sahte bir fark yaratir.
 ##
 ## SONUC: elle kredi bir tercih degil, tek mekanizma. Buyuklugu olculen
 ## (saat agaci + cikis buffer) degerine baglanmali, ve setup/hold'da ters yone
@@ -219,8 +273,8 @@ set_false_path -from [get_ports {sd_cd}]
 ## false_path orada zaten dogru kisittir. Geriye kalan ~30 sd_clk_core -> sys_clk
 ## yolu BILEREK bastirilmadi: ayni artefakt olduklari teshis edildi, ama
 ## false_path ile susturmak gercek kapsami da kaybettirir. Bkz. doc/cdc.md.
-set_false_path -to [get_pins {*rptr_gray_wr_s1*/D}]
-set_false_path -to [get_pins {*wptr_gray_rd_s1*/D}]
+set_false_path -to [get_pins {*rptr_gray_s1*/D}]
+set_false_path -to [get_pins {*wptr_gray_s1*/D}]
 
 ## ---- ped cikis enable'i: reset sonrasi SABIT -------------------------------
 ## u_phy/pad_en_q reset altinda 0, birakildiktan bir sys_clk sonra 1 ve bir daha

@@ -5,12 +5,16 @@ be traceable to a log here (R-DEL-5).
 
 | File | Contents |
 |------|----------|
-| `gowin_resource.txt`   | post-P&R utilisation |
-| `gowin_timing.txt`     | timing report at 50 MHz |
-| `verilator_lint.txt`   | zero-warning lint output (R-LANG-9) |
-| `uart_run1.log` … `uart_run5.log` | the five measurement runs (Section 12.3) |
-| `uart_soak.log`        | 30-minute soak (R-MEAS-5) |
-| `uart_degradation.log` | Section 7.4 procedure on the slow card |
+| `gowin_resource.txt`   | post-P&R utilisation of the core, sign-off constraints |
+| `gowin_timing.txt`     | timing report, sign-off (99 / 49.5 MHz) |
+| `gowin_timing_margin20.txt` | timing report, +20% margin set (118.8 / 59.4 MHz) |
+| `gowin_timing_bench.txt` | timing report of the bench harness bitstream |
+| `tier_run1.txt` … `tier_run5.txt` | the five tier measurement runs (Section 12.3, R-MEAS-4) |
+| `soak_30min.txt`       | 30-minute soak, 185 000 pairs (R-MEAS-5) |
+| `soak20.txt`, `soak100.txt`, `soak2000*.txt`, `soak1000.txt`, `soak_cal500.txt` | the calibration ladder; `README_soak_artefacts.md` explains these, including the two empty ones |
+| `deg_hw.txt`           | Section 7.4 degradation procedure, forced 1-bit + Default Speed (R-DEG-7) |
+| `sim_throughput_read.txt`, `sim_throughput_write.txt`, `sim_counter_crosscheck.txt`, `sim_freq_sweep.txt` | the performance testbenches' own output |
+| `bench_live_*.txt`     | development runs kept for the sweep analysis below |
 
 ## Reading the throughput fields
 

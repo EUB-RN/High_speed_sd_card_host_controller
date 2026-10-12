@@ -4,12 +4,16 @@
 # timed testbenches.
 # -----------------------------------------------------------------------------
 
-LINT_TOPS := clk_controller system_controller ultra_sd_phy_gowin \
+LINT_TOPS := clk_controller rst_sync system_controller ultra_sd_phy_gowin \
               ultra_sd_block ultra_sd_top
 
 clk_controller_LINT_SRCS := $(PKG) $(RTL_DIR)/clk_controller.sv
 
-system_controller_LINT_SRCS := $(PKG) $(RTL_DIR)/system_controller.sv
+rst_sync_LINT_SRCS := $(RTL_DIR)/rst_sync.sv
+
+# rst_sync: reset dagitimi artik alan basina bir ornek (bkz. rtl/rst_sync.sv).
+system_controller_LINT_SRCS := $(PKG) $(RTL_DIR)/rst_sync.sv \
+                               $(RTL_DIR)/system_controller.sv
 
 # Satici makrolari (IOBUF / DQCE / DCS) Verilator'de tanimli degil: lint
 # davranissal modelleri uzerinden kosar.
@@ -25,6 +29,7 @@ ultra_sd_block_LINT_SRCS := $(PKG) $(RTL_DIR)/ultra_sd_block.sv
 # Butun hiyerarsi. Tek bir modulu degil, birbirine BAGLI halini sinar: port
 # uyusmazligi, bagli kalmis giris ve kullanilmayan sinyal buradan cikar.
 ultra_sd_top_LINT_SRCS := $(PKG) \
+                          $(RTL_DIR)/rst_sync.sv \
                           $(RTL_DIR)/axi4/async_fifo.sv \
                           $(RTL_DIR)/axi4/axi4_lite_slave.sv \
                           $(RTL_DIR)/axi4/axis_rd_master.sv \
@@ -35,6 +40,9 @@ ultra_sd_top_LINT_SRCS := $(PKG) \
                           $(RTL_DIR)/crc/ultra_sd_crc7.sv \
                           $(RTL_DIR)/crc/ultra_sd_crc16.sv \
                           $(RTL_DIR)/ultra_sd_cmd.sv \
+                          $(RTL_DIR)/ultra_sd_cmd_tx.sv \
+                          $(RTL_DIR)/ultra_sd_init.sv \
+                          $(RTL_DIR)/ultra_sd_protocol.sv \
                           $(RTL_DIR)/ultra_sd_line.sv \
                           $(RTL_DIR)/clk_controller.sv \
                           $(RTL_DIR)/system_controller.sv \

@@ -29,7 +29,7 @@ module tb_sd_card_model;
   assign cmd    = cmd_oe ? cmd_out : 1'bz;
   assign cmd_in = cmd;
 
-  ultra_sd_cmd #(
+  ultra_sd_protocol #(
     .NCR_TIMEOUT_CLK(32), .NCC_GAP_CLK(2), .CMD_RETRIES(1)
   ) u_host_cmd (
     .cmd_clk(sd_clk), .rst_n,
@@ -45,7 +45,7 @@ module tb_sd_card_model;
     .dat_rd_start_o(), .dat_rd_bytes_o(),
     .dat_rd_data_i(32'h0), .dat_rd_valid_i(1'b0),
     .dat_rd_busy_i(1'b0), .dat_rd_crc_ok_i(1'b1),
-    .rca_o(), .card_blk_o(), .block_addr_o(), .speed_o(),
+    .rca_o(), .card_blk_o(), .speed_o(),
     .bus_4bit_o(), .clk_div_o(),
     .stat_clear_tgl_i(stat_clear_tgl), .stat_retry_cmd_o(stat_retry_cmd),
     .cmd_out_o(cmd_out), .cmd_oe_o(cmd_oe),

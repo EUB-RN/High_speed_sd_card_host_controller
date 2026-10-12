@@ -8,7 +8,9 @@ module tb_system_controller;
   logic init_done_i, start_i, dir_i, abort_i, xfer_done_i, xfer_err_i;
   logic bus_4bit_i;
   logic xfer_launch_o;
-  logic rst_n_o, core_rst_n_o, card_present_o, card_change_o;
+  logic rst_n_o, soft_clr_o, sd_rst_n_o, sd_soft_clr_o;
+  logic soft_ack_ext_i = 1'b1;   // bu testte baska saat alani yok
+  logic card_present_o, card_change_o;
   logic [CFG_CLK_W-1:0] sd_clk_ratio_o;
   logic sd_clk_en_o;
   logic sd_clk_i;
@@ -72,7 +74,7 @@ module tb_system_controller;
     xfer_done_i = 0; xfer_err_i = 0; bus_4bit_i = 1;
     sd_clk_i = 0;
     repeat (3) @(posedge clk);
-    check(!rst_n_o && !core_rst_n_o && !card_present_o, "external reset state");
+    check(!rst_n_o && !sd_rst_n_o && !card_present_o, "external reset state");
     rst_n_i = 1;
     wait_phase(SYS_CARD_DETECT, "synchronous reset release to card detect");
     check(!sd_clk_en_o, "SD clock disabled without card");
@@ -85,6 +87,19 @@ module tb_system_controller;
     // Rampa boyunca oran INIT_CLK_DIV'e sabitlenir, sonra clk_div_i'ye doner.
     check(sd_clk_ratio_o == CFG_CLK_W'(10), "ramp forces the init clock ratio");
     check(bus_wide_o, "negotiated four-bit bus width before transfer");
+
+    // SD alaninin reset'i artik KENDI saatinde sync-deassert ediliyor
+    // (rst_sync, RST_SYNC_STAGES=2), yani birakilmasi icin SD saati kenari
+    // gerekiyor. Eskiden core_rst_n_o clk alanindan kombinasyonel geliyordu ve
+    // hicbir SD kenarina ihtiyac duymuyordu.
+    //
+    // Donanimda bu KENDILIGINDEN dogru: saat SYS_RAMP'ten once gate'li, yani
+    // SD alani saati kosana kadar reset'te durur ve karta 74 DEGIL 74+STAGES
+    // kenar gider -- 74 bir ALT sinir (R-FUNC-2), fazlasi guvenli.
+    //
+    // Burada o iki kenar once harcanir, sonra rampanin kendisi sayilir.
+    repeat (2) pulse_sd_clock();
+    check(sd_rst_n_o, "SD alani reset'i kendi saatiyle birakildi");
 
     repeat (4) pulse_sd_clock();
     wait_phase(SYS_CONFIG, "configured after required ramp edges");
@@ -151,11 +166,41 @@ module tb_system_controller;
       check(stat_clear_tgl_o != tgl_before, "STAT_CLEAR pulse flips the toggle");
     end
 
+    // -------------------------------------------------------------------------
+    // Soft reset. Kritik ozellik: ASENKRON reset agina HIC dokunmaz. Eskiden
+    //     core_rst_n_o = rst_n_o & soft_rst_n_q
+    // idi ve o net sd_clk_core alanindaki floplarin asenkron reset pinini de
+    // suruyordu -- recovery/removal ihlali. Artik soft reset her alanda SENKRON
+    // bir clear, hard reset ise dokunulmamis halde kaliyor.
+    // -------------------------------------------------------------------------
     @(negedge clk); soft_reset_i = 1;
     @(posedge clk); #1; @(negedge clk); soft_reset_i = 0;
-    check(sys_phase_o == SYS_RESET && !core_rst_n_o, "soft reset enters reset phase");
-    repeat (18) @(posedge clk); #1;
-    check(core_rst_n_o, "soft reset is bounded and releases");
+
+    // Senkron clear iki flop'luk senkronizatorden geciyor, o yuzden hemen
+    // degil birkac cevrim sonra gorunur.
+    repeat (3) @(posedge clk); #1;
+    check(soft_clr_o, "soft reset clk alaninda senkron clear uretir");
+    check(rst_n_o,    "soft reset HARD reset'i ASSERT ETMEZ (clk)");
+    check(sd_rst_n_o, "soft reset HARD reset'i ASSERT ETMEZ (sd)");
+    check(sys_phase_o == SYS_RESET, "soft reset faz FSM'ini SYS_RESET'e alir");
+
+    // Gate: SENKRON bir clear'in uygulanabilmesi icin SD saati kosmak ZORUNDA.
+    // Faz SYS_RESET oldugu icin phase_ok dusuyor; sd_clk_en'deki soft_req
+    // terimi olmasa saat gate'lenir, sd alani clear'i hic gormez, onay hic
+    // gelmez ve istek HIC BIRAKILMAZDI. Bu check o deadlock'un bekcisi.
+    check(sd_clk_en_o, "istek beklerken SD saati gate'lenmez");
+
+    // Donanimda saati PHY'daki serbest kosan bolucu uretiyor; burada stimulus
+    // elle verildigi icin gate enable'i takip edip darbelemek TB'nin isi.
+    repeat (3) pulse_sd_clock();
+    check(sd_soft_clr_o, "soft reset sd alaninda da senkron clear uretir");
+
+    // Birakma: hem SOFT_RST_CYC tabani hem TUM alanlarin onayi gerekiyor.
+    repeat (24) @(posedge clk); #1;
+    repeat (3) pulse_sd_clock();
+    repeat (4) @(posedge clk); #1;
+    check(!soft_clr_o && !sd_soft_clr_o, "soft reset sinirli ve birakiliyor");
+    check(rst_n_o && sd_rst_n_o, "birakmadan sonra hard reset hala yuksek");
 
     if (failures) begin
       $display("tb_system_controller: FAILED (%0d/%0d)", failures, checks);
